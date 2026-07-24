@@ -8,7 +8,7 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc",
-    "test": "echo \"no tests yet — see docs/plans build plan (harness in ../internals is the proven prototype seed)\" && exit 1",
+    "test": "npm run build && node dist/harness.test.js",
     "prepublishOnly": "npm run build"
   },
   "engines": { "node": ">=18" },
@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "zod": "^3.25.76"
   }
 }
