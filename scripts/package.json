@@ -1,0 +1,17 @@
+{
+  "name": "@going-haywire/farmhand4claude-scripts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic pre-studio scripts for farmhand4claude — doctor (prereq probe), studioctl (sidecar-aware studio lifecycle), bootstrap (haywire init wrapper). No MCP; the onboarding skills orchestrate these.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node dist/doctor.test.js && node dist/studioctl.test.js && node dist/bootstrap.test.js"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}
