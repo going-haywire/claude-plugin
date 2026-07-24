@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 /**
- * PROTOTYPE — Farmhand stdio<->HTTP MCP proxy.
+ * Farmhand stdio<->HTTP MCP proxy.
  *
  * Claude Code connects to THIS over stdio at session start (always succeeds,
  * because this process is trivially up). Behind it we dial the Haywire studio's
  * streamable-HTTP /mcp endpoint, which may not exist yet. When the studio comes
  * up mid-session we forward its tool/resource lists and re-emit list_changed so
- * the tools appear in Claude Code with no reconnect.
- *
- * Throwaway: proves the reconnect + list_changed flow. Not production code.
+ * the tools appear in Claude Code with no reconnect. When the studio dies, the
+ * poll's liveness probe returns us to down-mode and re-emits list_changed.
  *
  * Facts pinned to primary sources (@modelcontextprotocol/sdk@1.29.0):
  *   - StreamableHTTPClientTransport(url, { requestInit: { headers } })  — src/client/streamableHttp.ts:100,149
@@ -62,7 +61,7 @@ function readToken(): string | null {
 
 /** The stdio-facing server Claude Code talks to. Created first, always up. */
 const proxy = new Server(
-  { name: "farmhand-mcp-server", version: "0.0.0-proto" },
+  { name: "farmhand-mcp-server", version: "0.1.0" },
   { capabilities: { tools: { listChanged: true }, resources: { listChanged: true } } },
 );
 
@@ -120,7 +119,7 @@ async function tryConnectUpstream(): Promise<void> {
   const transport = new StreamableHTTPClientTransport(new URL(UPSTREAM_URL), {
     requestInit: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
   });
-  const client = new Client({ name: "farmhand-proxy-client", version: "0.0.0-proto" });
+  const client = new Client({ name: "farmhand-proxy-client", version: "0.1.0" });
 
   // Re-emit upstream list_changed across the stdio boundary — the whole point.
   client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
@@ -141,13 +140,13 @@ async function tryConnectUpstream(): Promise<void> {
   }
 
   upstream = client;
+  // Fast-path teardown for the streaming case: if the transport carries a
+  // held-open stream, onclose fires the moment it drops. (For a stateless
+  // studio there is no such stream — the poll's liveness probe catches it.)
   client.onclose = () => {
+    if (upstream !== client) return; // already dropped by the probe
     log("upstream closed — back to down mode");
-    upstream = null;
-    upstreamTools = [];
-    upstreamResources = [];
-    void proxy.sendToolListChanged();
-    void proxy.sendResourceListChanged();
+    dropUpstream();
   };
 
   await refreshTools();
@@ -156,6 +155,35 @@ async function tryConnectUpstream(): Promise<void> {
   // Tell Claude Code the real tools are here now — no reconnect needed.
   await proxy.sendToolListChanged();
   await proxy.sendResourceListChanged();
+}
+
+/** Return to down-mode: forget upstream, clear caches, re-emit list_changed. */
+function dropUpstream(): void {
+  const c = upstream;
+  upstream = null;
+  upstreamTools = [];
+  upstreamResources = [];
+  if (c) void c.close().catch(() => {});
+  void proxy.sendToolListChanged();
+  void proxy.sendResourceListChanged();
+}
+
+/**
+ * Poll authority for BOTH directions. When down, try to connect. When up,
+ * probe liveness (a cheap listTools) — a stateless HTTP studio has no
+ * held-open stream to trigger onclose, so the probe is what notices it died.
+ */
+async function pollUpstream(): Promise<void> {
+  if (!upstream) {
+    await tryConnectUpstream();
+    return;
+  }
+  try {
+    upstreamTools = (await upstream.listTools()).tools;
+  } catch (e) {
+    log("upstream probe failed — back to down mode:", e instanceof Error ? e.message : e);
+    dropUpstream();
+  }
 }
 
 async function refreshTools(): Promise<void> {
@@ -176,10 +204,11 @@ async function main(): Promise<void> {
   await proxy.connect(new StdioServerTransport());
   log(`up. bridging stdio -> ${UPSTREAM_URL} (poll ${POLL_MS}ms). token: ${TOKEN_PATH}`);
 
-  // Poll so tools auto-appear the moment the studio comes up mid-session.
+  // Poll so tools auto-appear the moment the studio comes up mid-session,
+  // and disappear the moment it dies.
   const tick = async () => {
     try {
-      await tryConnectUpstream();
+      await pollUpstream();
     } catch (e) {
       log("poll error:", e instanceof Error ? e.message : e);
     }
