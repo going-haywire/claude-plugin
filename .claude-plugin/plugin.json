@@ -1,0 +1,8 @@
+{
+  "name": "farmhand4claude",
+  "description": "Your AI guide to Haywire: onboarding from a bare machine to a running studio, plus a bridge that surfaces the studio's tools in Claude Code.",
+  "version": "0.1.0",
+  "author": "going-haywire",
+  "homepage": "https://github.com/going-haywire/farmhand4claude",
+  "_scaffold_note": "PLACEHOLDER. The real manifest (mcpServers pointing at `npx -y @going-haywire/farmhand4claude`, skills[], and the marketplace.json) is authored in the build plan — see docs/plans/. Field names/shape must be verified against current Claude Code plugin docs at build time (they move fast); do not treat this file as authoritative."
+}

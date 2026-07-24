@@ -1,0 +1,25 @@
+{
+  "name": "@going-haywire/farmhand4claude",
+  "version": "0.1.0",
+  "description": "Farmhand — the AI harness for Haywire. A stdio↔HTTP MCP proxy that bridges Claude Code to a running Haywire studio, so studio tools appear mid-session with no reconnect.",
+  "type": "module",
+  "bin": { "farmhand4claude": "dist/index.js" },
+  "main": "dist/index.js",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "test": "echo \"no tests yet — see docs/plans build plan (harness in ../internals is the proven prototype seed)\" && exit 1",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": { "node": ">=18" },
+  "keywords": ["mcp", "claude-code", "haywire", "farmhand", "proxy"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/going-haywire/farmhand4claude" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}
