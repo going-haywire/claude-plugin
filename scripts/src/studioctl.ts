@@ -114,15 +114,20 @@ async function portOwnerPid(port: number): Promise<number | null> {
       return null;
     }
   }
-  // macOS / Linux.
+  // macOS / Linux. Query by PORT only — NOT pinned to 127.0.0.1: the studio
+  // binds the wildcard address (`*:8082`), which an `@127.0.0.1` filter misses
+  // even though a loopback connect probe still reaches it. `-iTCP:<port>`
+  // matches *:port, 127.0.0.1:port and [::1]:port alike.
   try {
-    const { stdout } = await run(
-      "lsof",
-      ["-nP", `-iTCP@127.0.0.1:${port}`, "-sTCP:LISTEN", "-t"],
-      { timeout: 5000 },
-    );
-    const pid = Number(stdout.trim().split(/\s+/)[0]);
-    return Number.isInteger(pid) && pid > 0 ? pid : null;
+    const { stdout } = await run("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], {
+      timeout: 5000,
+    });
+    // May list several fds/PIDs (one per line); the first listener is the owner.
+    for (const tok of stdout.trim().split(/\s+/)) {
+      const pid = Number(tok);
+      if (Number.isInteger(pid) && pid > 0) return pid;
+    }
+    return null;
   } catch {
     return null;
   }
