@@ -15,9 +15,9 @@
  *   - client.setNotificationHandler(ToolListChangedNotificationSchema)  — example simpleStreamableHttp.ts
  *   - stdio MUST NOT write non-MCP data to stdout (spec/transports)     — hence all logs -> stderr
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -38,29 +38,61 @@ import {
 const UPSTREAM_URL = process.env.FARMHAND_URL ?? "http://127.0.0.1:8082/mcp";
 const POLL_MS = Number(process.env.FARMHAND_POLL_MS ?? 2000);
 
+const TOKEN_REL = join(".haywire", "farmhand_token");
+
 /**
- * Candidate token paths, in priority order. The token lives at
- * `<workspace>/.haywire/farmhand_token`, so the whole game is knowing the
- * workspace. Claude Code does NOT run the MCP server with cwd = workspace
- * (it inherits the launch dir / $HOME — see CC issues #17565, #75266), so we
- * do NOT trust process.cwd(). Instead we read the workspace from env vars that
- * CC exports to the MCP subprocess and interpolates in plugin.json's env block:
- * FARMHAND_TOKEN_PATH (explicit override) > HAYWIRE_WORKSPACE >
- * CLAUDE_PROJECT_DIR. homedir() is a last resort for manual/standalone runs.
+ * Where to look for the bearer token, in priority order. The token lives at
+ * `<project>/.haywire/farmhand_token` — the whole game is finding the project.
+ *
+ * Claude Code does NOT run the MCP server with cwd = workspace (it inherits the
+ * launch dir / $HOME — CC issues #17565, #75266), so we do NOT trust
+ * process.cwd(). We read the workspace from env vars CC exports to the MCP
+ * subprocess (interpolated in plugin.json's env block):
+ *   FARMHAND_TOKEN_PATH (explicit override) > HAYWIRE_WORKSPACE > CLAUDE_PROJECT_DIR
+ * with homedir() as a last resort for manual/standalone runs.
+ *
+ * Crucially, the onboarding flow scaffolds the project into a SUBDIRECTORY of
+ * the opened workspace (e.g. workspace `/testbed`, project `/testbed/demo`), so
+ * the token is one level DOWN from the workspace, not directly in it. We
+ * therefore check the token under `<base>` AND under each immediate subdir of
+ * `<base>`.
+ *
+ * Computed at CALL TIME, not module load: the studio (and its token) may not
+ * exist yet when the proxy starts — the project is created mid-session.
  */
 function tokenCandidates(): string[] {
   const paths: string[] = [];
-  const add = (base: string | undefined) => {
-    if (base) paths.push(resolve(`${base}/.haywire/farmhand_token`));
+  const seen = new Set<string>();
+  const push = (p: string) => {
+    const r = resolve(p);
+    if (!seen.has(r)) {
+      seen.add(r);
+      paths.push(r);
+    }
   };
-  if (process.env.FARMHAND_TOKEN_PATH) paths.push(resolve(process.env.FARMHAND_TOKEN_PATH));
-  add(process.env.HAYWIRE_WORKSPACE);
-  add(process.env.CLAUDE_PROJECT_DIR);
-  add(homedir());
+
+  if (process.env.FARMHAND_TOKEN_PATH) push(process.env.FARMHAND_TOKEN_PATH);
+
+  const bases = [process.env.HAYWIRE_WORKSPACE, process.env.CLAUDE_PROJECT_DIR, homedir()];
+  for (const base of bases) {
+    if (!base) continue;
+    push(join(base, TOKEN_REL)); // CC opened directly in the project
+    // …and one level down: CC opened in the parent, project in a subdir.
+    for (const child of immediateSubdirs(base)) push(join(base, child, TOKEN_REL));
+  }
   return paths;
 }
 
-const TOKEN_PATHS = tokenCandidates();
+/** Immediate subdirectory names of `dir` (best-effort; [] on any error). */
+function immediateSubdirs(dir: string): string[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+      .map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
 
 const log = (...a: unknown[]) => console.error("[farmhand-proxy]", ...a); // stderr only
 
@@ -75,7 +107,7 @@ let upstreamResources: Resource[] = [];
  * return which path it came from (for diagnostics).
  */
 function readTokenFrom(): { token: string; path: string } | null {
-  for (const p of TOKEN_PATHS) {
+  for (const p of tokenCandidates()) {
     try {
       const t = readFileSync(p, "utf8").trim();
       if (t.length > 0) return { token: t, path: p };
@@ -130,7 +162,7 @@ proxy.setRequestHandler(CallToolRequestSchema, async (req) => {
       : `Haywire studio not running (no connection to ${UPSTREAM_URL}). ` +
         (found
           ? `Token present (${found.path}).`
-          : `No token found. Looked in: ${TOKEN_PATHS.join(", ")}.`);
+          : `No token found. Looked in: ${tokenCandidates().join(", ")}.`);
     return { content: [{ type: "text", text }], structuredContent: { up, url: UPSTREAM_URL } };
   }
 
@@ -236,7 +268,14 @@ async function refreshResources(): Promise<void> {
 // ---- main -------------------------------------------------------------------
 async function main(): Promise<void> {
   await proxy.connect(new StdioServerTransport());
-  log(`up. bridging stdio -> ${UPSTREAM_URL} (poll ${POLL_MS}ms). token candidates: ${TOKEN_PATHS.join(", ")}`);
+  const bases = [process.env.HAYWIRE_WORKSPACE, process.env.CLAUDE_PROJECT_DIR, homedir()]
+    .filter(Boolean)
+    .join(", ");
+  log(
+    `up. bridging stdio -> ${UPSTREAM_URL} (poll ${POLL_MS}ms). ` +
+      `token search bases (+ their immediate subdirs): ${bases}` +
+      (process.env.FARMHAND_TOKEN_PATH ? ` [override: ${process.env.FARMHAND_TOKEN_PATH}]` : ""),
+  );
 
   // Poll so tools auto-appear the moment the studio comes up mid-session,
   // and disappear the moment it dies.

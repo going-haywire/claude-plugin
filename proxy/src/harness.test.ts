@@ -126,9 +126,14 @@ async function checkStdioDiscipline(): Promise<void> {
 async function main() {
   await checkStdioDiscipline();
 
+  // Model the real getting-started layout: Claude Code is opened in a PARENT
+  // workspace, and bootstrap scaffolds the project into a SUBDIRECTORY. The
+  // token therefore lives one level DOWN from CLAUDE_PROJECT_DIR — the proxy
+  // must discover it there, not just at <workspace>/.haywire.
   const ws = mkdtempSync(join(tmpdir(), "farmhand-proto-"));
-  mkdirSync(join(ws, ".haywire"), { recursive: true });
-  const tokenPath = join(ws, ".haywire", "farmhand_token");
+  const projectDir = join(ws, "demo_project");
+  mkdirSync(join(projectDir, ".haywire"), { recursive: true });
+  const tokenPath = join(projectDir, ".haywire", "farmhand_token");
 
   // t0: start proxy with studio DOWN via StdioClientTransport (it spawns the process).
   const client = new Client({ name: "harness", version: "1.0.0" });
@@ -149,7 +154,9 @@ async function main() {
     env: {
       ...(process.env as Record<string, string>),
       FARMHAND_URL: `http://127.0.0.1:${PORT}/mcp`,
-      CLAUDE_PROJECT_DIR: ws, // proxy must resolve <ws>/.haywire/farmhand_token
+      // Parent workspace; token is in ws/demo_project/.haywire — the proxy must
+      // find it one level down, as it must for the real onboarding flow.
+      CLAUDE_PROJECT_DIR: ws,
       FARMHAND_POLL_MS: "500",
     },
   });
