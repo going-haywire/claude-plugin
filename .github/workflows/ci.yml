@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["18", "20", "22"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # studioctl resolves the port owner via lsof; make it deterministic rather
+      # than relying on it being preinstalled on the runner image.
+      - name: Ensure lsof is present
+        run: sudo apt-get update && sudo apt-get install -y lsof
+
+      # Two independent packages, each with its own lockfile + test suite.
+      # Run them sequentially in one job: the proxy harness binds :8082 and the
+      # scripts' studioctl test binds ephemeral ports, so keeping them serial
+      # avoids any port contention on the runner.
+
+      - name: proxy — install
+        working-directory: proxy
+        run: npm ci
+
+      - name: proxy — test (down-mode → studio-up → list_changed → forwarded call → resource → reconnect; stdio discipline)
+        working-directory: proxy
+        run: npm test
+
+      - name: scripts — install
+        working-directory: scripts
+        run: npm ci
+
+      - name: scripts — test (doctor / studioctl / bootstrap)
+        working-directory: scripts
+        run: npm test
