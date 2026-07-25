@@ -19,6 +19,13 @@ export interface ToolCheck {
   ok: boolean;
   /** Parsed version string when we could read one (e.g. "3.12.4"). */
   version?: string;
+  /**
+   * For Python: the interpreter command that satisfied the floor (e.g.
+   * "python3.12"). May differ from the default `python3` when a newer
+   * interpreter is installed under a version-suffixed name. Absent for
+   * uv/git.
+   */
+  interpreter?: string;
   /** Copy-pasteable install hint, OS-specific. Empty when ok. */
   hint: string;
 }
@@ -92,23 +99,44 @@ function parsePython(out: string): { version: string; major: number; minor: numb
   return { version: `${major}.${minor}.${patch}`, major, minor };
 }
 
+/** Does a parsed version meet the floor? */
+function meetsFloor(v: { major: number; minor: number }): boolean {
+  return v.major > PY_MIN.major || (v.major === PY_MIN.major && v.minor >= PY_MIN.minor);
+}
+
+/**
+ * Interpreter commands to probe, newest floor-eligible suffix first, then the
+ * generic names. The default `python3`/`python` may point at an OLDER Python
+ * even when a newer one is installed under a version-suffixed name (common with
+ * Homebrew's python@3.12/@3.13/…), so we look for a qualifying interpreter
+ * anywhere before deciding the box needs action.
+ */
+function pythonCandidates(): string[] {
+  const suffixed: string[] = [];
+  // A generous ceiling so future minors are found without another edit.
+  for (let minor = 20; minor >= PY_MIN.minor; minor--) suffixed.push(`python${PY_MIN.major}.${minor}`);
+  return [...suffixed, "python3", "python"];
+}
+
 async function checkPython(p: Platform): Promise<ToolCheck> {
-  // Prefer python3, fall back to python (Windows / some setups).
-  for (const cmd of ["python3", "python"]) {
+  // Track the newest interpreter we saw, so a miss can report what IS there.
+  let best: { version: string; interpreter: string } | null = null;
+
+  for (const cmd of pythonCandidates()) {
     const out = await tryRun(cmd, ["--version"]);
     if (out === null) continue;
     const parsed = parsePython(out);
     if (!parsed) continue;
-    const ok =
-      parsed.major > PY_MIN.major ||
-      (parsed.major === PY_MIN.major && parsed.minor >= PY_MIN.minor);
-    return {
-      ok,
-      version: parsed.version,
-      hint: ok ? "" : pythonHint(p),
-    };
+
+    if (meetsFloor(parsed)) {
+      // First qualifying interpreter wins — the box is flight-ready. Silent pass.
+      return { ok: true, version: parsed.version, interpreter: cmd, hint: "" };
+    }
+    if (!best) best = { version: parsed.version, interpreter: cmd };
   }
-  return { ok: false, hint: pythonHint(p) };
+
+  // Nothing installed meets the floor — this is a real, user-actionable miss.
+  return { ok: false, version: best?.version, hint: pythonHint(p) };
 }
 
 async function checkVersioned(
@@ -135,8 +163,15 @@ export async function doctor(): Promise<DoctorReport> {
 /** Render the report as human-readable text for the skill/CLI to show. */
 export function formatReport(r: DoctorReport): string {
   const line = (label: string, c: ToolCheck): string => {
-    if (c.ok) return `  ✓ ${label}${c.version ? ` (${c.version})` : ""}`;
-    return `  ✗ ${label} — not found\n      install: ${c.hint}`;
+    if (c.ok) {
+      const via =
+        c.interpreter && c.interpreter !== "python3" && c.interpreter !== "python"
+          ? ` via ${c.interpreter}`
+          : "";
+      return `  ✓ ${label}${c.version ? ` (${c.version}${via})` : ""}`;
+    }
+    const found = c.version ? ` (found ${c.version})` : "";
+    return `  ✗ ${label} — not found${found}\n      install: ${c.hint}`;
   };
   return [
     "Haywire prerequisite check:",
