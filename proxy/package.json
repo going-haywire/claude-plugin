@@ -19,6 +19,9 @@
   "engines": {
     "node": ">=18"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "mcp",
     "claude-code",
