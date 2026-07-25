@@ -36,11 +36,31 @@ import {
 
 // ---- config (env-overridable; sensible Haywire defaults) --------------------
 const UPSTREAM_URL = process.env.FARMHAND_URL ?? "http://127.0.0.1:8082/mcp";
-const TOKEN_PATH = resolve(
-  process.env.FARMHAND_TOKEN_PATH ??
-    `${process.env.HAYWIRE_WORKSPACE ?? homedir()}/.haywire/farmhand_token`,
-);
 const POLL_MS = Number(process.env.FARMHAND_POLL_MS ?? 2000);
+
+/**
+ * Candidate token paths, in priority order. The token lives at
+ * `<workspace>/.haywire/farmhand_token`, so the whole game is knowing the
+ * workspace. Claude Code does NOT run the MCP server with cwd = workspace
+ * (it inherits the launch dir / $HOME — see CC issues #17565, #75266), so we
+ * do NOT trust process.cwd(). Instead we read the workspace from env vars that
+ * CC exports to the MCP subprocess and interpolates in plugin.json's env block:
+ * FARMHAND_TOKEN_PATH (explicit override) > HAYWIRE_WORKSPACE >
+ * CLAUDE_PROJECT_DIR. homedir() is a last resort for manual/standalone runs.
+ */
+function tokenCandidates(): string[] {
+  const paths: string[] = [];
+  const add = (base: string | undefined) => {
+    if (base) paths.push(resolve(`${base}/.haywire/farmhand_token`));
+  };
+  if (process.env.FARMHAND_TOKEN_PATH) paths.push(resolve(process.env.FARMHAND_TOKEN_PATH));
+  add(process.env.HAYWIRE_WORKSPACE);
+  add(process.env.CLAUDE_PROJECT_DIR);
+  add(homedir());
+  return paths;
+}
+
+const TOKEN_PATHS = tokenCandidates();
 
 const log = (...a: unknown[]) => console.error("[farmhand-proxy]", ...a); // stderr only
 
@@ -49,14 +69,25 @@ let upstream: Client | null = null;
 let upstreamTools: Tool[] = [];
 let upstreamResources: Resource[] = [];
 
-/** Read the bearer token LAZILY — the file doesn't exist until the studio has run once. */
-function readToken(): string | null {
-  try {
-    const t = readFileSync(TOKEN_PATH, "utf8").trim();
-    return t.length > 0 ? t : null;
-  } catch {
-    return null;
+/**
+ * Read the bearer token LAZILY — the file doesn't exist until the studio has
+ * run once. Try each candidate path and return the first non-empty token; also
+ * return which path it came from (for diagnostics).
+ */
+function readTokenFrom(): { token: string; path: string } | null {
+  for (const p of TOKEN_PATHS) {
+    try {
+      const t = readFileSync(p, "utf8").trim();
+      if (t.length > 0) return { token: t, path: p };
+    } catch {
+      /* try the next candidate */
+    }
   }
+  return null;
+}
+
+function readToken(): string | null {
+  return readTokenFrom()?.token ?? null;
 }
 
 /** The stdio-facing server Claude Code talks to. Created first, always up. */
@@ -93,10 +124,13 @@ proxy.setRequestHandler(CallToolRequestSchema, async (req) => {
 
   if (name === "farmhand_studio_status") {
     const up = upstream !== null;
+    const found = readTokenFrom();
     const text = up
       ? `Haywire studio reachable at ${UPSTREAM_URL}; ${upstreamTools.length} tools available.`
       : `Haywire studio not running (no connection to ${UPSTREAM_URL}). ` +
-        (readToken() ? "Token present." : `No token at ${TOKEN_PATH} yet.`);
+        (found
+          ? `Token present (${found.path}).`
+          : `No token found. Looked in: ${TOKEN_PATHS.join(", ")}.`);
     return { content: [{ type: "text", text }], structuredContent: { up, url: UPSTREAM_URL } };
   }
 
@@ -202,7 +236,7 @@ async function refreshResources(): Promise<void> {
 // ---- main -------------------------------------------------------------------
 async function main(): Promise<void> {
   await proxy.connect(new StdioServerTransport());
-  log(`up. bridging stdio -> ${UPSTREAM_URL} (poll ${POLL_MS}ms). token: ${TOKEN_PATH}`);
+  log(`up. bridging stdio -> ${UPSTREAM_URL} (poll ${POLL_MS}ms). token candidates: ${TOKEN_PATHS.join(", ")}`);
 
   // Poll so tools auto-appear the moment the studio comes up mid-session,
   // and disappear the moment it dies.

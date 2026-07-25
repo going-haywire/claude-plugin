@@ -12,7 +12,10 @@
   "mcpServers": {
     "farmhand": {
       "command": "npx",
-      "args": ["-y", "@going-haywire/farmhand4claude"]
+      "args": ["-y", "@going-haywire/farmhand4claude"],
+      "env": {
+        "HAYWIRE_WORKSPACE": "${CLAUDE_PROJECT_DIR}"
+      }
     }
   },
   "skills": "./skills/"

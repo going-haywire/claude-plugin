@@ -137,6 +137,11 @@ async function main() {
     listChangedCount++;
   });
 
+  // Drive the token path the way the SHIPPED plugin does: via the workspace env
+  // var (CLAUDE_PROJECT_DIR, which plugin.json maps to HAYWIRE_WORKSPACE) — NOT
+  // an explicit FARMHAND_TOKEN_PATH. This proves the proxy derives
+  // <workspace>/.haywire/farmhand_token from the env CC injects, since CC does
+  // not run the MCP server with cwd = workspace.
   const transport = new StdioClientTransport({
     command: "node",
     args: ["dist/index.js"],
@@ -144,7 +149,7 @@ async function main() {
     env: {
       ...(process.env as Record<string, string>),
       FARMHAND_URL: `http://127.0.0.1:${PORT}/mcp`,
-      FARMHAND_TOKEN_PATH: tokenPath,
+      CLAUDE_PROJECT_DIR: ws, // proxy must resolve <ws>/.haywire/farmhand_token
       FARMHAND_POLL_MS: "500",
     },
   });
