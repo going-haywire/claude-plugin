@@ -18,13 +18,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ["18", "20", "22"]
+        # Node 18 is EOL (Apr 2025) and ships only experimental fetch, whose
+        # slow request teardown made the proxy's liveness probe flaky. The
+        # package floor is >=20.
+        node: ["20", "22"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Node ${{ matrix.node }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
 
