@@ -1,7 +1,7 @@
 {
   "name": "farmhand4claude",
   "description": "Your AI guide to Haywire: onboarding from a bare machine to a running studio, plus a bridge that surfaces the studio's tools in Claude Code.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "going-haywire"
   },

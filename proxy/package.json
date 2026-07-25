@@ -1,6 +1,6 @@
 {
   "name": "@going-haywire/farmhand4claude",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Farmhand — the AI harness for Haywire. A stdio↔HTTP MCP proxy that bridges Claude Code to a running Haywire studio, so studio tools appear mid-session with no reconnect.",
   "type": "module",
   "bin": {

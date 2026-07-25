@@ -124,7 +124,7 @@ function readToken(): string | null {
 
 /** The stdio-facing server Claude Code talks to. Created first, always up. */
 const proxy = new Server(
-  { name: "farmhand-mcp-server", version: "0.1.0" },
+  { name: "farmhand-mcp-server", version: "0.1.1" },
   { capabilities: { tools: { listChanged: true }, resources: { listChanged: true } } },
 );
 
@@ -185,7 +185,7 @@ async function tryConnectUpstream(): Promise<void> {
   const transport = new StreamableHTTPClientTransport(new URL(UPSTREAM_URL), {
     requestInit: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
   });
-  const client = new Client({ name: "farmhand-proxy-client", version: "0.1.0" });
+  const client = new Client({ name: "farmhand-proxy-client", version: "0.1.1" });
 
   // Re-emit upstream list_changed across the stdio boundary — the whole point.
   client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {

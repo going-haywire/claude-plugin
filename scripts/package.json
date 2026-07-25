@@ -1,6 +1,6 @@
 {
   "name": "@going-haywire/farmhand4claude-scripts",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Deterministic pre-studio scripts for farmhand4claude — doctor (prereq probe), studioctl (sidecar-aware studio lifecycle), bootstrap (haywire init wrapper). No MCP; the onboarding skills orchestrate these.",
   "type": "module",
