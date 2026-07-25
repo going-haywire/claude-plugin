@@ -1,5 +1,8 @@
 # farmhand4claude
 
+[![CI](https://github.com/going-haywire/farmhand4claude/actions/workflows/ci.yml/badge.svg)](https://github.com/going-haywire/farmhand4claude/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@going-haywire/farmhand4claude.svg)](https://www.npmjs.com/package/@going-haywire/farmhand4claude)
+
 **Your AI guide to [Haywire](https://github.com/going-haywire/haywire).** Install this plugin in
 Claude Code and it walks you from a bare machine to a running Haywire studio — checking your setup,
 scaffolding a project, launching the studio — then keeps helping you inside the running app. No

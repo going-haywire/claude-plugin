@@ -1,0 +1,71 @@
+name: Publish
+
+# Push a version tag to publish the proxy package to npm, e.g.:
+#   npm version patch --workspace ... (or bump proxy/package.json), then
+#   git tag v0.1.1 && git push origin v0.1.1
+#
+# Requires a repo secret NPM_TOKEN — an npm "Automation" access token for the
+# going-haywire org (Automation tokens bypass 2FA, which interactive publish
+# would otherwise prompt for). Create it at npmjs.com → Access Tokens.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Never publish two releases concurrently.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Ensure lsof is present
+        run: sudo apt-get update && sudo apt-get install -y lsof
+
+      # Gate the release on the SAME suites CI runs — never publish a red build.
+      - name: proxy — install
+        working-directory: proxy
+        run: npm ci
+
+      - name: proxy — test
+        working-directory: proxy
+        run: npm test
+
+      - name: scripts — install
+        working-directory: scripts
+        run: npm ci
+
+      - name: scripts — test
+        working-directory: scripts
+        run: npm test
+
+      # Refuse to publish if the git tag doesn't match proxy/package.json version.
+      - name: Verify tag matches package version
+        working-directory: proxy
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          echo "tag=$TAG package=$PKG"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::Tag v$TAG does not match proxy/package.json version $PKG"
+            exit 1
+          fi
+
+      - name: Publish to npm
+        working-directory: proxy
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
