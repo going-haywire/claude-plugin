@@ -27,7 +27,14 @@ manual `uvx … haywire init` path is for you — you don't need this plugin.)*
    **Code** tab.
 2. When it asks, choose **Local** and **select a folder** — create an empty folder called
    `haywire-projects` and pick it. (Claude Code needs a working folder to start.)
-3. Install this plugin: `/plugin install farmhand4claude` *(marketplace instructions coming soon).*
+3. Add this plugin's marketplace, then install it — run these two commands in
+   Claude Code:
+
+   ```text
+   /plugin marketplace add going-haywire/farmhand4claude
+   /plugin install farmhand4claude@farmhand-marketplace
+   ```
+
 4. Say **"help me get started with Haywire"** — and follow along.
 
 Behind the scenes the plugin checks you have Python 3.12+, `uv`, and git (offering exact install

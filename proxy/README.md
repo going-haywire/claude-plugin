@@ -27,9 +27,9 @@ All logs go to stderr; stdout carries only MCP frames.
 
 You normally don't run this directly — install the plugin and it runs the proxy:
 
-```
+```text
 /plugin marketplace add going-haywire/farmhand4claude
-/plugin install farmhand4claude
+/plugin install farmhand4claude@farmhand-marketplace
 ```
 
 ## Configuration (environment variables)
