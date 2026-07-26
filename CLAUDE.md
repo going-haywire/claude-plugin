@@ -19,7 +19,7 @@ tools appear in Claude Code.
 
 1. **Pre-studio** (no MCP yet): beginner **skills** orchestrate deterministic **scripts** —
    `doctor` (probe Python≥3.12 / uv / git, never clobber), `bootstrap` (glorified
-   `uvx --from haywire-studio haywire init <name>`), studio launch (detached, poll :8082).
+   `uvx --from haywire-studio haywire init <name>`), studio launch (detached, poll the studio port).
 2. **Post-studio:** the **`farmhand` MCP proxy** (`proxy/src/index.ts`) — a stdio MCP server Claude
    Code spawns at session start, forwarding to the studio's HTTP `/mcp` and re-emitting
    `list_changed` so tools appear mid-session with no reconnect.
@@ -45,7 +45,7 @@ tools appear in Claude Code.
 
 The studio (haywire repo) writes `<workspace>/.haywire/studio.json` at startup — fields: `pid`, `port`,
 `project`, `project_path`, `started_at`, `host`, `role`, `url`. **This repo is the CONSUMER:** the
-studio-launch script reads it to decide, when `:8082` is busy, whether to reuse (pid == `lsof`
+studio-launch script reads it to decide, when the studio port is busy, whether to reuse (pid == `lsof`
 port-owner → return URL), or `lsof` port→PID→cwd→that project's sidecar to NAME a different project
 and **ask the user** ([Open][Stop&start][Cancel]). Stale file + dead pid → clean up, start fresh.
 The PRODUCER half already landed in the haywire repo (`farmhand/identity.py`).

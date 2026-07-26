@@ -34,13 +34,20 @@ You normally don't run this directly — install the plugin and it runs the prox
 
 ## Configuration (environment variables)
 
-| Variable              | Default                              | Purpose                                            |
-| --------------------- | ------------------------------------ | -------------------------------------------------- |
-| `FARMHAND_URL`        | `http://127.0.0.1:8082/mcp`          | The studio's streamable-HTTP MCP endpoint.         |
-| `FARMHAND_TOKEN_PATH` | *(derived from the workspace)*       | Explicit path to the bearer-token file.            |
-| `HAYWIRE_WORKSPACE`   | —                                    | Workspace root; token read from `<ws>/.haywire/farmhand_token`. |
-| `CLAUDE_PROJECT_DIR`  | *(set by Claude Code)*               | Fallback workspace root when the plugin runs it.   |
-| `FARMHAND_POLL_MS`    | `2000`                               | Studio discovery / liveness poll interval.         |
+| Variable              | Default                        | Purpose                                                                    |
+| --------------------- | ------------------------------ | -------------------------------------------------------------------------- |
+| `FARMHAND_URL`        | *(discovered; see below)*      | The studio's streamable-HTTP MCP endpoint. Set only to override discovery. |
+| `FARMHAND_TOKEN_PATH` | *(derived from the workspace)* | Explicit path to the bearer-token file.                                    |
+| `HAYWIRE_WORKSPACE`   | —                              | Workspace root; token read from `<ws>/.haywire/farmhand_token`.            |
+| `CLAUDE_PROJECT_DIR`  | *(set by Claude Code)*         | Fallback workspace root when the plugin runs it.                           |
+| `FARMHAND_POLL_MS`    | `2000`                         | Studio discovery / liveness poll interval.                                 |
+
+The endpoint is resolved at each connect attempt, not at startup — the studio
+may not exist when the proxy launches. Precedence: `FARMHAND_URL` → the `url`
+(or `port`) in the `.haywire/studio.json` sidecar the studio writes beside the
+token → `http://127.0.0.1:8124/mcp`. That last value only mirrors the *default*
+of the studio's `network.port` setting, which users can change; the sidecar is
+the authority whenever it exists.
 
 The bearer token is read **lazily** — the file does not exist until the studio
 has run once.

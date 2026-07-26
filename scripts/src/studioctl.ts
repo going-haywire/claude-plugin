@@ -2,7 +2,7 @@
  * studioctl — Haywire studio launch + sidecar-aware lifecycle (CONSUMER side).
  *
  * The studio (haywire repo) writes `<workspace>/.haywire/studio.json` at
- * startup. This module READS that sidecar to decide, when :8082 is busy,
+ * startup. This module READS that sidecar to decide, when the studio port is busy,
  * whether the listener is *mine* (reuse it), *another project's* (ask the
  * user), or a stranger (unknown). It never writes the sidecar — that's the
  * producer's job, and it already landed in the haywire repo.
@@ -18,8 +18,14 @@ import { createConnection } from "node:net";
 
 const run = promisify(execFile);
 
-/** The studio's fixed local port (haywire repo's default). */
-export const DEFAULT_PORT = 8082;
+/**
+ * Fallback port, used only when no live sidecar names one.
+ *
+ * Mirrors the studio's `network.port` DEFAULT (haywire repo,
+ * network/settings.py) — but that is a user-editable setting bounded only by
+ * 1024..65535, so this is a guess. A live sidecar's `port` always wins.
+ */
+export const DEFAULT_PORT = 8124;
 
 /** Sidecar shape the studio writes. We tolerate missing/extra fields. */
 export interface StudioIdentity {
@@ -45,6 +51,8 @@ export interface ResolveResult {
   other_identity?: StudioIdentity;
   /** Best URL to reach the studio, when one is known. */
   url?: string;
+  /** The port actually probed — sidecar-derived unless overridden. */
+  port: number;
 }
 
 export interface StartResult {
@@ -53,7 +61,10 @@ export interface StartResult {
 }
 
 interface ResolveOpts {
-  /** Override the port (tests use an ephemeral one). Defaults to DEFAULT_PORT. */
+  /**
+   * Force a port (tests use an ephemeral one). Omit to derive it: a live
+   * sidecar's `port`, else DEFAULT_PORT.
+   */
   port?: number;
 }
 
@@ -102,7 +113,7 @@ async function portOwnerPid(port: number): Promise<number | null> {
     try {
       const { stdout } = await run("netstat", ["-ano"], { timeout: 5000 });
       for (const line of stdout.split(/\r?\n/)) {
-        // e.g. "  TCP    127.0.0.1:8082   0.0.0.0:0   LISTENING   1234"
+        // e.g. "  TCP    127.0.0.1:8124   0.0.0.0:0   LISTENING   1234"
         if (!/LISTENING/i.test(line)) continue;
         if (!new RegExp(`[:.]${port}\\b`).test(line)) continue;
         const cols = line.trim().split(/\s+/);
@@ -115,7 +126,7 @@ async function portOwnerPid(port: number): Promise<number | null> {
     }
   }
   // macOS / Linux. Query by PORT only — NOT pinned to 127.0.0.1: the studio
-  // binds the wildcard address (`*:8082`), which an `@127.0.0.1` filter misses
+  // binds the wildcard address (`*:<port>`), which an `@127.0.0.1` filter misses
   // even though a loopback connect probe still reaches it. `-iTCP:<port>`
   // matches *:port, 127.0.0.1:port and [::1]:port alike.
   try {
@@ -169,16 +180,24 @@ export async function resolveStudio(
   workspace: string,
   opts: ResolveOpts = {},
 ): Promise<ResolveResult> {
-  const port = opts.port ?? DEFAULT_PORT;
   const identity = readIdentity(workspace) ?? undefined;
+
+  // The studio's port is user-configurable, so DEFAULT_PORT is only a guess.
+  // A sidecar names the real one — but only while its process is alive: a stale
+  // file may record a port from an older studio (or an older default), and
+  // probing that would misreport a running studio as absent.
+  const sidecarPort =
+    identity?.pid !== undefined && pidAlive(identity.pid) ? identity.port : undefined;
+  const port = opts.port ?? sidecarPort ?? DEFAULT_PORT;
+
   const open = await isPortOpen(port);
 
   if (!open) {
     // Port is closed. A sidecar pointing at a dead pid is stale; otherwise free.
     if (identity?.pid && !pidAlive(identity.pid)) {
-      return { state: "stale", identity };
+      return { state: "stale", identity, port };
     }
-    return { state: "free", identity };
+    return { state: "free", identity, port };
   }
 
   // Port is open — who holds it?
@@ -190,6 +209,7 @@ export async function resolveStudio(
       identity,
       port_owner_pid: owner,
       url: identity.url ?? `http://127.0.0.1:${port}/mcp`,
+      port,
     };
   }
 
@@ -198,18 +218,18 @@ export async function resolveStudio(
     const cwd = await pidCwd(owner);
     const otherIdentity = cwd ? readIdentity(cwd) ?? undefined : undefined;
     if (otherIdentity) {
-      return { state: "other", identity, port_owner_pid: owner, other_identity: otherIdentity };
+      return { state: "other", identity, port_owner_pid: owner, other_identity: otherIdentity, port };
     }
   }
 
   // Port held but unattributable to a project (no owner pid, or no sidecar).
-  return { state: "unknown", identity, port_owner_pid: owner ?? undefined };
+  return { state: "unknown", identity, port_owner_pid: owner ?? undefined, port };
 }
 
 // ---- launch -----------------------------------------------------------------
 
 /**
- * Start the studio for `workspace`, detached, and wait until :8082 answers.
+ * Start the studio for `workspace`, detached, and wait until the studio port answers.
  *
  * If the port is already held by MY studio, reuse it (no second process). Any
  * other busy-port situation is the caller's decision — resolve first and ask
@@ -219,10 +239,12 @@ export async function startStudio(
   workspace: string,
   opts: { timeout?: number; port?: number } = {},
 ): Promise<StartResult> {
-  const port = opts.port ?? DEFAULT_PORT;
   const timeout = opts.timeout ?? 30_000;
 
-  const resolved = await resolveStudio(workspace, { port });
+  // Let resolve pick the port (explicit opt > live sidecar > default) and use
+  // whatever it settled on, so the probe and the poll can never disagree.
+  const resolved = await resolveStudio(workspace, opts.port ? { port: opts.port } : {});
+  const port = resolved.port;
   if (resolved.state === "mine") {
     return { status: "reused", url: resolved.url ?? `http://127.0.0.1:${port}/mcp` };
   }

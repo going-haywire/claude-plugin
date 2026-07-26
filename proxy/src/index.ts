@@ -17,7 +17,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -35,10 +35,17 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 // ---- config (env-overridable; sensible Haywire defaults) --------------------
-const UPSTREAM_URL = process.env.FARMHAND_URL ?? "http://127.0.0.1:8082/mcp";
+/**
+ * Last-resort endpoint, used only when no sidecar can be found. Matches the
+ * studio's `network.port` DEFAULT (haywire repo, network/settings.py) — but
+ * that is a user-editable setting, not a constant, so this number is a guess
+ * and the sidecar below is the real answer whenever it exists.
+ */
+const DEFAULT_UPSTREAM_URL = "http://127.0.0.1:8124/mcp";
 const POLL_MS = Number(process.env.FARMHAND_POLL_MS ?? 2000);
 
 const TOKEN_REL = join(".haywire", "farmhand_token");
+const IDENTITY_FILE = "studio.json";
 
 /**
  * Where to look for the bearer token, in priority order. The token lives at
@@ -118,8 +125,40 @@ function readTokenFrom(): { token: string; path: string } | null {
   return null;
 }
 
-function readToken(): string | null {
-  return readTokenFrom()?.token ?? null;
+/**
+ * The studio's /mcp endpoint, resolved LAZILY like the token — and for the same
+ * reason: the studio may not exist when the proxy starts.
+ *
+ * The studio's port is the user-editable `network.port` setting, so no constant
+ * can be trusted. The authoritative value is in the identity sidecar the studio
+ * writes at startup, which lives in the SAME `.haywire/` directory as the token
+ * — so once `readTokenFrom()` has located the project, the endpoint is free.
+ *
+ * Priority: FARMHAND_URL (explicit override) > sidecar `url`/`port` > default.
+ */
+function upstreamUrl(tokenPath?: string): string {
+  if (process.env.FARMHAND_URL) return process.env.FARMHAND_URL;
+
+  const found = tokenPath ?? readTokenFrom()?.path;
+  if (found) {
+    try {
+      const id = JSON.parse(readFileSync(join(dirname(found), IDENTITY_FILE), "utf8"));
+      const base =
+        typeof id?.url === "string" && id.url
+          ? id.url
+          : Number.isInteger(id?.port)
+            ? `http://127.0.0.1:${id.port}`
+            : null;
+      if (base) {
+        const trimmed = base.replace(/\/+$/, "");
+        // The studio writes the bare origin; tolerate it already carrying /mcp.
+        return trimmed.endsWith("/mcp") ? trimmed : `${trimmed}/mcp`;
+      }
+    } catch {
+      /* absent or garbage sidecar -> fall through to the default */
+    }
+  }
+  return DEFAULT_UPSTREAM_URL;
 }
 
 /** The stdio-facing server Claude Code talks to. Created first, always up. */
@@ -157,13 +196,14 @@ proxy.setRequestHandler(CallToolRequestSchema, async (req) => {
   if (name === "farmhand_studio_status") {
     const up = upstream !== null;
     const found = readTokenFrom();
+    const url = upstreamUrl(found?.path);
     const text = up
-      ? `Haywire studio reachable at ${UPSTREAM_URL}; ${upstreamTools.length} tools available.`
-      : `Haywire studio not running (no connection to ${UPSTREAM_URL}). ` +
+      ? `Haywire studio reachable at ${url}; ${upstreamTools.length} tools available.`
+      : `Haywire studio not running (no connection to ${url}). ` +
         (found
           ? `Token present (${found.path}).`
           : `No token found. Looked in: ${tokenCandidates().join(", ")}.`);
-    return { content: [{ type: "text", text }], structuredContent: { up, url: UPSTREAM_URL } };
+    return { content: [{ type: "text", text }], structuredContent: { up, url } };
   }
 
   if (!upstream) {
@@ -181,9 +221,10 @@ proxy.setRequestHandler(CallToolRequestSchema, async (req) => {
 // ---- upstream lifecycle: connect when studio appears, drop when it dies ------
 async function tryConnectUpstream(): Promise<void> {
   if (upstream) return; // already connected
-  const token = readToken();
-  const transport = new StreamableHTTPClientTransport(new URL(UPSTREAM_URL), {
-    requestInit: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+  // One discovery pass feeds both the token and the endpoint beside it.
+  const found = readTokenFrom();
+  const transport = new StreamableHTTPClientTransport(new URL(upstreamUrl(found?.path)), {
+    requestInit: found ? { headers: { Authorization: `Bearer ${found.token}` } } : undefined,
   });
   const client = new Client({ name: "farmhand-proxy-client", version: "0.1.1" });
 
@@ -272,7 +313,8 @@ async function main(): Promise<void> {
     .filter(Boolean)
     .join(", ");
   log(
-    `up. bridging stdio -> ${UPSTREAM_URL} (poll ${POLL_MS}ms). ` +
+    // Endpoint is re-resolved per connect attempt; this is just the opening guess.
+    `up. bridging stdio -> ${upstreamUrl()} (poll ${POLL_MS}ms). ` +
       `token search bases (+ their immediate subdirs): ${bases}` +
       (process.env.FARMHAND_TOKEN_PATH ? ` [override: ${process.env.FARMHAND_TOKEN_PATH}]` : ""),
   );

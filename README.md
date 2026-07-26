@@ -66,7 +66,8 @@ cd scripts && npm install && npm test   # doctor / studioctl / bootstrap
 ```
 
 `npm run build` in either package runs `tsc`. The proxy bridges to the Haywire
-studio's MCP endpoint (`http://127.0.0.1:8082/mcp`) — see the
+studio's MCP endpoint, discovered from the studio's `.haywire/studio.json`
+sidecar (falling back to `http://127.0.0.1:8124/mcp`) — see the
 [haywire repo](https://github.com/going-haywire/haywire). CI
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs both suites on
 Node 20 & 22 for every push and PR.

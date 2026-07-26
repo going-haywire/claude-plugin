@@ -1,5 +1,5 @@
 // studioctl.test.ts — resolve the five sidecar states without launching a studio.
-import { resolveStudio } from "./studioctl.js";
+import { resolveStudio, DEFAULT_PORT } from "./studioctl.js";
 import { writeFileSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -102,6 +102,53 @@ function listenEphemeral(host?: string): Promise<{ port: number; close: () => vo
   const r = await resolveStudio(ws, { port });
   assert(r.state === "mine", `loopback-bound port, sidecar pid == owner -> mine, got ${r.state}`);
   close();
+}
+
+// --- port derivation: a LIVE sidecar's port beats DEFAULT_PORT ---------------
+// The studio's port is the user-editable `network.port` setting, so probing
+// DEFAULT_PORT would miss a studio listening anywhere else. No opts.port here —
+// that is the whole point: resolve must find the port on its own.
+{
+  const { port, close } = await listenEphemeral();
+  const ws = tempWorkspace();
+  writeSidecar(ws, {
+    pid: process.pid, // alive, and we hold the port
+    port,
+    project: "p",
+    project_path: ws,
+    url: `http://127.0.0.1:${port}`,
+  });
+  const r = await resolveStudio(ws); // no port override
+  assert(r.port === port, `live sidecar port is probed, not DEFAULT_PORT, got ${r.port}`);
+  assert(r.state === "mine", `derived port finds the running studio, got ${r.state}`);
+  close();
+}
+
+// --- port derivation: a STALE sidecar's port is NOT trusted ------------------
+// A dead studio's file may name a port from an older run (or an older default);
+// believing it would probe the wrong port and misreport a live studio.
+{
+  const ws = tempWorkspace();
+  writeSidecar(ws, {
+    pid: 999999, // dead
+    port: 9, // discard port — never what we want to probe
+    project: "p",
+    project_path: ws,
+    url: "http://127.0.0.1:9",
+  });
+  const r = await resolveStudio(ws);
+  assert(r.port === DEFAULT_PORT, `stale sidecar port ignored, fell back to ${DEFAULT_PORT}, got ${r.port}`);
+}
+
+// --- an explicit port always wins -------------------------------------------
+{
+  const { port, close } = await listenEphemeral();
+  close();
+  await new Promise((r) => setTimeout(r, 100));
+  const ws = tempWorkspace();
+  writeSidecar(ws, { pid: process.pid, port: 9, project: "p", project_path: ws });
+  const r = await resolveStudio(ws, { port });
+  assert(r.port === port, `explicit opts.port overrides the sidecar, got ${r.port}`);
 }
 
 console.error(

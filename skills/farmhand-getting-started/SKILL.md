@@ -85,8 +85,8 @@ Read the `state`:
   they confirm — stopping another project's studio is their call, not yours), or
   **[Cancel]**. Never stop another project's studio without explicit consent.
 - **`unknown`** → the port is busy but not attributable to a Haywire project.
-  Tell the user something else is on port 8082 and let them decide (free the
-  port, or cancel).
+  Tell the user something else is on the studio's port (the result's `port`
+  field says which) and let them decide (free the port, or cancel).
 
 ### 4. Confirm the tools appeared
 
