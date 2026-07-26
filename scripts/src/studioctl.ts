@@ -10,7 +10,7 @@
  * The launch path spawns `uv run haywire` DETACHED so the studio outlives this
  * Node process (and thus the Claude Code session that triggered it).
  */
-import { readFileSync, openSync } from "node:fs";
+import { readFileSync, openSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
@@ -237,11 +237,19 @@ export async function startStudio(
   }
 
   // Free or stale: launch. Detach so the studio outlives this process.
+  //
+  // `.haywire/` is created by the STUDIO at startup (auth.py / identity.py), so
+  // on a first launch it does not exist yet and openSync would ENOENT — which
+  // used to fall through to /dev/null and silently discard every byte the
+  // studio wrote, including the diagnostics the timeout path tries to tail.
+  // Create the directory ourselves; the studio's own mkdir is exist_ok.
   const logPath = join(workspace, ".haywire", "studio.log");
   let fd: number;
   try {
+    mkdirSync(join(workspace, ".haywire"), { recursive: true });
     fd = openSync(logPath, "a");
-  } catch {
+  } catch (e) {
+    console.error(`studioctl: cannot write ${logPath} (${(e as Error).message}); discarding studio output.`);
     fd = openSync(process.platform === "win32" ? "NUL" : "/dev/null", "a");
   }
 
@@ -249,6 +257,10 @@ export async function startStudio(
     cwd: workspace,
     detached: true,
     stdio: ["ignore", fd, fd],
+    // fd 1 is a file, not a tty, so CPython block-buffers stdout (8 KiB) and
+    // plain print() output never reaches the log until the process exits.
+    // logging still flushes per record; this puts print() on equal footing.
+    env: { ...process.env, PYTHONUNBUFFERED: "1" },
   });
   child.unref();
 

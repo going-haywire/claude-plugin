@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node dist/doctor.test.js && node dist/studioctl.test.js && node dist/bootstrap.test.js"
+    "test": "npm run build && node dist/doctor.test.js && node dist/studioctl.test.js && node dist/studioctl.launch.test.js && node dist/bootstrap.test.js"
   },
   "engines": { "node": ">=20" },
   "license": "MIT",
