@@ -89,6 +89,7 @@ writeFileSync(join(".haywire", "studio.json"), JSON.stringify({
   port,
   project: "fake-studio",
   project_path: process.cwd(),
+  started_at: Date.now() / 1000,
   url: "http://127.0.0.1:" + port,
 }));
 createServer().listen(port, () => console.log("FAKE_UV_LISTENING"));
@@ -184,21 +185,85 @@ process.env.PATH = `${binDir}:${process.env.PATH ?? ""}`;
   await new Promise((res) => srv.close(res));
 }
 
-// --- child dies on startup: timeout error carries the log tail ----------------
-// This is the payoff for the /dev/null fix — the diagnostic the timeout path
-// tries to surface only exists if the log file was really opened.
+// --- the studio lands on a port we did NOT predict ---------------------------
+// `network.port` is a user setting, and on a first launch there is no sidecar to
+// read it from — so the port startStudio probes is only a guess. The wait must
+// follow the studio's own announcement, not the guess. Here the guess is a
+// closed port and the studio comes up somewhere else entirely.
+{
+  const ws = freshWorkspace();
+  const actualPort = await freePort();
+  const predictedPort = await freePort(); // closed, and NOT where the studio lands
+  writeFileSync(join(ws, ".fake-uv-port"), String(actualPort));
+
+  const r = await startStudio(ws, { port: predictedPort, timeout: 10_000 });
+  spawned.push(JSON.parse(readFileSync(join(ws, ".haywire", "studio.json"), "utf8")).pid);
+
+  assert(r.status === "started", `studio on an unpredicted port -> started, got ${r.status}`);
+  assert(
+    r.url === `http://127.0.0.1:${actualPort}`,
+    `url follows the sidecar to :${actualPort}, got ${r.url}`,
+  );
+}
+
+// --- a STALE sidecar must not satisfy the wait -------------------------------
+// The file a dead studio left behind is not evidence. Its port is even held
+// open here, so accepting it would return a plausible-looking wrong answer.
+{
+  const ws = freshWorkspace();
+  mkdirSync(join(ws, ".haywire"), { recursive: true });
+  const decoy = createServer();
+  const decoyPort: number = await new Promise((resolve) => {
+    decoy.listen(0, () => {
+      const addr = decoy.address();
+      resolve(typeof addr === "object" && addr ? addr.port : 0);
+    });
+  });
+  writeFileSync(
+    join(ws, ".haywire", "studio.json"),
+    JSON.stringify({
+      pid: 999999, // dead
+      port: decoyPort, // ...but this port IS open
+      project: "old-run",
+      project_path: ws,
+      started_at: 1,
+      url: `http://127.0.0.1:${decoyPort}`,
+    }),
+  );
+
+  const actualPort = await freePort();
+  const predictedPort = await freePort();
+  writeFileSync(join(ws, ".fake-uv-port"), String(actualPort));
+
+  const r = await startStudio(ws, { port: predictedPort, timeout: 10_000 });
+  spawned.push(JSON.parse(readFileSync(join(ws, ".haywire", "studio.json"), "utf8")).pid);
+
+  assert(
+    r.url === `http://127.0.0.1:${actualPort}`,
+    `waited for the NEW sidecar, not the stale one (:${decoyPort}), got ${r.url}`,
+  );
+  await new Promise((res) => decoy.close(res));
+}
+
+// --- child dies on startup: fail fast, carrying the log tail ------------------
+// The tail is also the payoff for the /dev/null fix — the diagnostic only
+// exists if the log file was really opened.
 {
   const ws = freshWorkspace(); // no .fake-uv-port -> stub exits 3 immediately
   const port = await freePort();
 
+  const t0 = Date.now();
   let threw = "";
   try {
-    await startStudio(ws, { port, timeout: 2_000 });
+    await startStudio(ws, { port, timeout: 15_000 });
   } catch (e) {
     threw = (e as Error).message;
   }
-  assert(threw.includes("did not come up"), `dead child -> timeout error, got "${threw}"`);
-  assert(threw.includes("FAKE_UV_CRASHED"), "timeout error surfaces the child's own log tail");
+  const elapsed = Date.now() - t0;
+
+  assert(threw.includes("exited with code 3"), `dead child -> reports the exit code, got "${threw}"`);
+  assert(threw.includes("FAKE_UV_CRASHED"), "error surfaces the child's own log tail");
+  assert(elapsed < 5_000, `failed fast rather than burning the 15s timeout, took ${elapsed}ms`);
 }
 
 for (const pid of spawned) {

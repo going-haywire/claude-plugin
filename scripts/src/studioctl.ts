@@ -33,7 +33,8 @@ export interface StudioIdentity {
   port?: number;
   project?: string;
   project_path?: string;
-  started_at?: string;
+  /** Unix timestamp. The studio writes a float (identity.py), not a string. */
+  started_at?: number | string;
   host?: string;
   role?: string;
   url?: string;
@@ -229,11 +230,36 @@ export async function resolveStudio(
 // ---- launch -----------------------------------------------------------------
 
 /**
- * Start the studio for `workspace`, detached, and wait until the studio port answers.
+ * Has the studio we just launched announced itself?
+ *
+ * A sidecar found after launch may be the one the PREVIOUS run left behind, so
+ * its mere presence proves nothing. It counts as ours only if its process is
+ * alive AND it differs from the snapshot taken before we spawned — the studio
+ * rewrites `pid` and `started_at` on every startup, so either changing is proof
+ * of a new run.
+ */
+function announcedItself(now: StudioIdentity, before: StudioIdentity | null): boolean {
+  if (now.pid === undefined || !pidAlive(now.pid)) return false;
+  if (!before) return true;
+  return now.pid !== before.pid || String(now.started_at ?? "") !== String(before.started_at ?? "");
+}
+
+/**
+ * Start the studio for `workspace`, detached, and wait until it is reachable.
  *
  * If the port is already held by MY studio, reuse it (no second process). Any
  * other busy-port situation is the caller's decision — resolve first and ask
  * the user; startStudio only launches when the port is free or already mine.
+ *
+ * The wait watches for the studio to ANNOUNCE ITSELF in the sidecar rather than
+ * for a predicted port to answer. `network.port` is a user setting, so on a
+ * first launch (no sidecar yet to read it from) the port we probed is only a
+ * guess — polling it would time out while the studio is up and healthy on the
+ * port the user actually configured. The sidecar carries the real one.
+ *
+ * A studio too old to write a sidecar still works: the predicted port is kept
+ * as a fallback. A child that exits non-zero fails fast rather than burning the
+ * full timeout.
  */
 export async function startStudio(
   workspace: string,
@@ -257,6 +283,10 @@ export async function startStudio(
       }. Resolve this before launching.`,
     );
   }
+
+  // Snapshot the sidecar we are about to supersede, so the wait below can tell
+  // the studio's fresh announcement from the file a previous run left behind.
+  const before = readIdentity(workspace);
 
   // Free or stale: launch. Detach so the studio outlives this process.
   //
@@ -286,24 +316,48 @@ export async function startStudio(
   });
   child.unref();
 
-  // Poll until the studio answers or we time out.
+  // A child that dies on startup is a definite answer — no point waiting out
+  // the timeout. Only a NON-ZERO exit counts: a launcher that forks and exits
+  // cleanly may well have left a healthy studio behind.
+  let died: number | null = null;
+  child.on("exit", (code) => {
+    if (code !== 0) died = code;
+  });
+
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
+    // The studio's own account of where it listens — authoritative.
+    const identity = readIdentity(workspace);
+    if (identity?.port !== undefined && announcedItself(identity, before)) {
+      if (await isPortOpen(identity.port)) {
+        return {
+          status: "started",
+          url: identity.url ?? `http://127.0.0.1:${identity.port}/mcp`,
+        };
+      }
+    }
+
+    // Fallback for a studio too old to write a sidecar: the port we predicted.
     if (await isPortOpen(port)) {
-      const identity = readIdentity(workspace);
       return { status: "started", url: identity?.url ?? `http://127.0.0.1:${port}/mcp` };
     }
-    await new Promise((r) => setTimeout(r, 500));
+
+    if (died !== null) break;
+    await new Promise((r) => setTimeout(r, 250));
   }
 
-  // Timed out — surface the log tail to help diagnose.
+  // Failed — surface the log tail to help diagnose.
   let tail = "";
   try {
     tail = readFileSync(logPath, "utf8").split("\n").slice(-20).join("\n");
   } catch {
     /* no log */
   }
-  throw new Error(`Studio did not come up on :${port} within ${timeout}ms.\n--- studio.log tail ---\n${tail}`);
+  const why =
+    died !== null
+      ? `exited with code ${died}`
+      : `did not come up within ${timeout}ms (probed :${port} and the sidecar)`;
+  throw new Error(`Studio ${why}.\n--- studio.log tail ---\n${tail}`);
 }
 
 // CLI entrypoint: `node dist/studioctl.js [resolve|start] [workspace]`.
