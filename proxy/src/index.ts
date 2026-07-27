@@ -22,7 +22,10 @@ import { dirname, join, resolve } from "node:path";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import {
+  StreamableHTTPClientTransport,
+  StreamableHTTPError,
+} from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -46,6 +49,18 @@ const POLL_MS = Number(process.env.FARMHAND_POLL_MS ?? 2000);
 
 const TOKEN_REL = join(".haywire", "farmhand_token");
 const IDENTITY_FILE = "studio.json";
+
+/**
+ * A manual override supplied mid-session via the `farmhand_studio_connect`
+ * tool — for a studio outside every path `tokenCandidates()` can reach (a
+ * different workspace on the same machine). Nothing here is persisted: it
+ * lives only for the life of this process, same as `upstream` below.
+ *
+ * `FARMHAND_URL`/`FARMHAND_TOKEN_PATH` (env, set before the session starts)
+ * still take priority — this is the mid-session equivalent for a user who
+ * didn't know the port in advance.
+ */
+let manualOverride: { port: number; token?: string } | null = null;
 
 /**
  * Where to look for the bearer token, in priority order. The token lives at
@@ -109,6 +124,18 @@ let upstreamTools: Tool[] = [];
 let upstreamResources: Resource[] = [];
 
 /**
+ * Outcome of the most recent connect attempt, for `farmhand_studio_status` to
+ * report between polls. In particular this is what carries the "found a
+ * studio, but it wants a token" signal — a 401 is not the same as nothing
+ * being there, and only this lets the status tool tell them apart.
+ */
+type LastAttempt =
+  | { kind: "connected" }
+  | { kind: "unreachable" }
+  | { kind: "unauthorized" };
+let lastAttempt: LastAttempt = { kind: "unreachable" };
+
+/**
  * Read the bearer token LAZILY — the file doesn't exist until the studio has
  * run once. Try each candidate path and return the first non-empty token; also
  * return which path it came from (for diagnostics).
@@ -125,24 +152,48 @@ function readTokenFrom(): { token: string; path: string } | null {
   return null;
 }
 
-/**
- * The studio's /mcp endpoint, resolved LAZILY like the token — and for the same
- * reason: the studio may not exist when the proxy starts.
- *
- * The studio's port is the user-editable `network.port` setting, so no constant
- * can be trusted. The authoritative value is in the identity sidecar the studio
- * writes at startup, which lives in the SAME `.haywire/` directory as the token
- * — so once `readTokenFrom()` has located the project, the endpoint is free.
- *
- * Priority: FARMHAND_URL (explicit override) > sidecar `url`/`port` > default.
- */
-function upstreamUrl(tokenPath?: string): string {
-  if (process.env.FARMHAND_URL) return process.env.FARMHAND_URL;
+interface Connection {
+  url: string;
+  token: string | null;
+  /** Where this URL/token pair came from — for status text and logs. */
+  source: "env" | "manual" | "sidecar" | "default";
+}
 
-  const found = tokenPath ?? readTokenFrom()?.path;
+/**
+ * Resolve where to dial and what bearer token (if any) to send, LAZILY on
+ * every attempt — the studio may not exist yet, and the manual override can
+ * change mid-session via `farmhand_studio_connect`.
+ *
+ * The URL and the token are resolved independently, NOT as one atomic choice:
+ * `FARMHAND_URL` overrides only the address (this predates the sidecar work —
+ * pointing at a fixed URL for a test harness, say — and token discovery must
+ * keep running underneath it, same as before). `manualOverride`, by contrast,
+ * carries an explicit token from the user and so DOES override both together
+ * — a manually-supplied port has no sidecar of its own to read a token from.
+ *
+ * URL precedence: FARMHAND_URL > manualOverride.port > sidecar `url`/`port` >
+ * DEFAULT_UPSTREAM_URL (a bare guess, for a studio running with
+ * require_auth off).
+ * Token precedence: manualOverride.token > discovered file token > none.
+ */
+function resolveConnection(): Connection {
+  const found = readTokenFrom();
+
+  if (process.env.FARMHAND_URL) {
+    return { url: process.env.FARMHAND_URL, token: found?.token ?? null, source: "env" };
+  }
+
+  if (manualOverride) {
+    return {
+      url: `http://127.0.0.1:${manualOverride.port}/mcp`,
+      token: manualOverride.token ?? found?.token ?? null,
+      source: "manual",
+    };
+  }
+
   if (found) {
     try {
-      const id = JSON.parse(readFileSync(join(dirname(found), IDENTITY_FILE), "utf8"));
+      const id = JSON.parse(readFileSync(join(dirname(found.path), IDENTITY_FILE), "utf8"));
       const base =
         typeof id?.url === "string" && id.url
           ? id.url
@@ -152,13 +203,16 @@ function upstreamUrl(tokenPath?: string): string {
       if (base) {
         const trimmed = base.replace(/\/+$/, "");
         // The studio writes the bare origin; tolerate it already carrying /mcp.
-        return trimmed.endsWith("/mcp") ? trimmed : `${trimmed}/mcp`;
+        const url = trimmed.endsWith("/mcp") ? trimmed : `${trimmed}/mcp`;
+        return { url, token: found.token, source: "sidecar" };
       }
     } catch {
-      /* absent or garbage sidecar -> fall through to the default */
+      /* absent or garbage sidecar -> fall through, but keep the token found */
     }
+    return { url: DEFAULT_UPSTREAM_URL, token: found.token, source: "sidecar" };
   }
-  return DEFAULT_UPSTREAM_URL;
+
+  return { url: DEFAULT_UPSTREAM_URL, token: null, source: "default" };
 }
 
 /** The stdio-facing server Claude Code talks to. Created first, always up. */
@@ -167,7 +221,7 @@ const proxy = new Server(
   { capabilities: { tools: { listChanged: true }, resources: { listChanged: true } } },
 );
 
-// Sentinel so the model has an affordance while the studio is down.
+// Sentinels so the model has affordances while the studio is down.
 const STATUS_TOOL: Tool = {
   name: "farmhand_studio_status",
   description:
@@ -176,9 +230,31 @@ const STATUS_TOOL: Tool = {
   inputSchema: { type: "object", properties: {} },
 };
 
+const CONNECT_TOOL: Tool = {
+  name: "farmhand_studio_connect",
+  description:
+    "Point the proxy at a Haywire studio the automatic discovery can't find — " +
+    "typically one running in a DIFFERENT workspace/project on this machine, " +
+    "which is outside every path farmhand_studio_status can search. Ask the " +
+    "user for the port (and the token, if farmhand_studio_status reported " +
+    "one is required) rather than guessing. Takes effect immediately and for " +
+    "the rest of this session only; it is not saved anywhere.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      port: { type: "number", description: "The studio's port, e.g. 8124." },
+      token: {
+        type: "string",
+        description: "Bearer token from that studio's .haywire/farmhand_token, if it requires one.",
+      },
+    },
+    required: ["port"],
+  },
+};
+
 // ---- request handlers: forward to upstream, or answer locally when down ------
 proxy.setRequestHandler(ListToolsRequestSchema, async () => {
-  return { tools: upstream ? upstreamTools : [STATUS_TOOL] };
+  return { tools: upstream ? upstreamTools : [STATUS_TOOL, CONNECT_TOOL] };
 });
 
 proxy.setRequestHandler(ListResourcesRequestSchema, async () => {
@@ -195,15 +271,58 @@ proxy.setRequestHandler(CallToolRequestSchema, async (req) => {
 
   if (name === "farmhand_studio_status") {
     const up = upstream !== null;
-    const found = readTokenFrom();
-    const url = upstreamUrl(found?.path);
-    const text = up
-      ? `Haywire studio reachable at ${url}; ${upstreamTools.length} tools available.`
-      : `Haywire studio not running (no connection to ${url}). ` +
-        (found
-          ? `Token present (${found.path}).`
-          : `No token found. Looked in: ${tokenCandidates().join(", ")}.`);
-    return { content: [{ type: "text", text }], structuredContent: { up, url } };
+    const conn = resolveConnection();
+    let text: string;
+    if (up) {
+      text = `Haywire studio reachable at ${conn.url}; ${upstreamTools.length} tools available.`;
+    } else if (lastAttempt.kind === "unauthorized") {
+      text =
+        `A studio answered at ${conn.url} but rejected the request — it requires a token this ` +
+        `proxy doesn't have (source: ${conn.source}). Ask the user for the token from that ` +
+        `studio's .haywire/farmhand_token, then call farmhand_studio_connect with the port ` +
+        `and token.`;
+    } else {
+      text =
+        `Haywire studio not running (no connection to ${conn.url}, source: ${conn.source}). ` +
+        (conn.token
+          ? `Token present.`
+          : `No token found in the workspace. Looked in: ${tokenCandidates().join(", ")}. `) +
+        `If a studio is running under a different project on this machine, ask the user for ` +
+        `its port (and token, if it requires one) and call farmhand_studio_connect.`;
+    }
+    return { content: [{ type: "text", text }], structuredContent: { up, url: conn.url, source: conn.source } };
+  }
+
+  if (name === "farmhand_studio_connect") {
+    const port = Number((args as Record<string, unknown> | undefined)?.port);
+    const token = (args as Record<string, unknown> | undefined)?.token;
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      return {
+        isError: true,
+        content: [{ type: "text", text: `'port' must be an integer 1-65535, got ${String(port)}.` }],
+      };
+    }
+    if (token !== undefined && typeof token !== "string") {
+      return { isError: true, content: [{ type: "text", text: `'token' must be a string if provided.` }] };
+    }
+
+    manualOverride = { port, token: token as string | undefined };
+    dropUpstream(); // discard any existing connection so the override takes effect now
+    await tryConnectUpstream();
+
+    const conn = resolveConnection();
+    const text = upstream
+      ? `Connected: ${conn.url}, ${upstreamTools.length} tools available.`
+      : lastAttempt.kind === "unauthorized"
+        ? `A studio answered at ${conn.url} but rejected the token (missing, wrong, or the ` +
+          `studio needs a different one). Ask the user to double-check it.`
+        : `No studio answered at ${conn.url}. Ask the user to confirm the port and that the ` +
+          `studio is running.`;
+    return {
+      isError: !upstream,
+      content: [{ type: "text", text }],
+      structuredContent: { up: upstream !== null, url: conn.url },
+    };
   }
 
   if (!upstream) {
@@ -221,10 +340,9 @@ proxy.setRequestHandler(CallToolRequestSchema, async (req) => {
 // ---- upstream lifecycle: connect when studio appears, drop when it dies ------
 async function tryConnectUpstream(): Promise<void> {
   if (upstream) return; // already connected
-  // One discovery pass feeds both the token and the endpoint beside it.
-  const found = readTokenFrom();
-  const transport = new StreamableHTTPClientTransport(new URL(upstreamUrl(found?.path)), {
-    requestInit: found ? { headers: { Authorization: `Bearer ${found.token}` } } : undefined,
+  const conn = resolveConnection();
+  const transport = new StreamableHTTPClientTransport(new URL(conn.url), {
+    requestInit: conn.token ? { headers: { Authorization: `Bearer ${conn.token}` } } : undefined,
   });
   const client = new Client({ name: "farmhand-proxy-client", version: "0.1.1" });
 
@@ -241,11 +359,17 @@ async function tryConnectUpstream(): Promise<void> {
   try {
     await client.connect(transport);
   } catch (e) {
-    // Studio still down / token wrong. Stay in "down" mode; poll will retry.
     await transport.close().catch(() => {});
+    // A 401 means something IS there — distinct from nothing answering at all.
+    // This is the signal that lets farmhand_studio_status point the user at
+    // farmhand_studio_connect instead of just reporting "not running".
+    lastAttempt = e instanceof StreamableHTTPError && e.code === 401
+      ? { kind: "unauthorized" }
+      : { kind: "unreachable" };
     return;
   }
 
+  lastAttempt = { kind: "connected" };
   upstream = client;
   // Fast-path teardown for the streaming case: if the transport carries a
   // held-open stream, onclose fires the moment it drops. (For a stateless
@@ -314,7 +438,7 @@ async function main(): Promise<void> {
     .join(", ");
   log(
     // Endpoint is re-resolved per connect attempt; this is just the opening guess.
-    `up. bridging stdio -> ${upstreamUrl()} (poll ${POLL_MS}ms). ` +
+    `up. bridging stdio -> ${resolveConnection().url} (poll ${POLL_MS}ms). ` +
       `token search bases (+ their immediate subdirs): ${bases}` +
       (process.env.FARMHAND_TOKEN_PATH ? ` [override: ${process.env.FARMHAND_TOKEN_PATH}]` : ""),
   );

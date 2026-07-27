@@ -15,11 +15,27 @@ Claude Code spawns this over stdio at session start (it always starts, even when
 no studio is running). Behind it, the proxy dials the Haywire studio's
 streamable-HTTP `/mcp` endpoint:
 
-- **Studio down** → exposes a single sentinel tool, `farmhand_studio_status`.
+- **Studio down** → exposes two sentinel tools: `farmhand_studio_status` and
+  `farmhand_studio_connect` (see below).
 - **Studio comes up mid-session** → the proxy forwards the studio's tools and
   resources and re-emits `list_changed`, so they appear with **no reconnect**.
 - **Studio dies** → a liveness poll returns the proxy to down-mode and re-emits
   `list_changed` again.
+
+Discovery only ever looks inside the current workspace (see below) and only
+ever guesses one port, the compiled-in default. A studio running under a
+**different** project on the same machine — or on a non-default port with no
+sidecar to read it from — is outside all of that and needs the escape hatch:
+
+- `farmhand_studio_status` tells you when this has happened: if something
+  answered but rejected the request with 401, the report says so explicitly
+  and names the port, rather than reporting it identically to "nothing
+  running" — that would leave no way to tell "wrong port" apart from "right
+  port, needs a token I don't have."
+- `farmhand_studio_connect(port, token?)` points the proxy at that studio for
+  the rest of the session. Nothing is written to disk — set `FARMHAND_URL`
+  (and read the token yourself into the request) if you want it to persist
+  across restarts instead.
 
 All logs go to stderr; stdout carries only MCP frames.
 

@@ -162,11 +162,14 @@ async function main() {
   });
   await client.connect(transport);
 
-  // t1: studio down => sentinel only.
+  // t1: studio down => only the two down-mode sentinels (status + connect).
   const down = await client.listTools();
+  const downNames = down.tools.map((t) => t.name).sort();
   check(
-    down.tools.length === 1 && down.tools[0]!.name === "farmhand_studio_status",
-    "down mode: only the sentinel tool is listed",
+    downNames.length === 2 &&
+      downNames.includes("farmhand_studio_status") &&
+      downNames.includes("farmhand_studio_connect"),
+    `down mode: only the sentinel tools are listed, got [${downNames.join(", ")}]`,
   );
 
   // t2: bring the studio up + write the token.
@@ -210,7 +213,8 @@ async function main() {
   for (let i = 0; i < 20; i++) {
     await sleep(500);
     const now = await client.listTools();
-    if (now.tools.length === 1 && now.tools[0]!.name === "farmhand_studio_status") {
+    const names = now.tools.map((t) => t.name).sort();
+    if (names.length === 2 && names.includes("farmhand_studio_status") && names.includes("farmhand_studio_connect")) {
       backToDown = true;
       break;
     }

@@ -37,9 +37,10 @@ tools appear in Claude Code.
   the stdio Server re-emits downstream. This is the whole point of the proxy.
 - **stdio discipline:** MUST NOT write non-MCP data to stdout → **all logs go to stderr.**
 - **MCP server `name` = "farmhand"** (tools appear as `farmhand_*`), NOT the package name.
-- Settled behavior: discovery = **poll** (~2s); while studio down = one `farmhand_studio_status`
-  **sentinel** tool; mutation gated **solely** by Claude Code's native per-tool permission (no proxy
-  filtering).
+- Settled behavior: discovery = **poll** (~2s); while studio down = two sentinel tools,
+  `farmhand_studio_status` and `farmhand_studio_connect` (manual escape hatch for a studio outside
+  the workspace or on a non-default port — see `proxy/README.md`); mutation gated **solely** by
+  Claude Code's native per-tool permission (no proxy filtering).
 
 ## Studio identity sidecar (the daemon-lifecycle contract)
 
