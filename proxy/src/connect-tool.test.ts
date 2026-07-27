@@ -141,6 +141,13 @@ async function statusOf(client: Client): Promise<{ text: string; structured: Rec
     /requires a token|rejected/.test(text) && text.includes("farmhand_studio_connect"),
     `status names the 401 and points at farmhand_studio_connect, got "${text}"`,
   );
+  check(
+    structured.reason === "unauthorized",
+    // structuredContent must carry the distinction too — a client that renders
+    // only structured data (not the prose `text`) needs this to tell "401" apart
+    // from "nothing answered" without parsing English.
+    `structuredContent.reason distinguishes 401 from unreachable, got "${JSON.stringify(structured)}"`,
+  );
 
   await client.close();
   await new Promise((r) => studio.close(r));

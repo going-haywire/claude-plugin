@@ -290,7 +290,10 @@ proxy.setRequestHandler(CallToolRequestSchema, async (req) => {
         `If a studio is running under a different project on this machine, ask the user for ` +
         `its port (and token, if it requires one) and call farmhand_studio_connect.`;
     }
-    return { content: [{ type: "text", text }], structuredContent: { up, url: conn.url, source: conn.source } };
+    return {
+      content: [{ type: "text", text }],
+      structuredContent: { up, url: conn.url, source: conn.source, reason: up ? "connected" : lastAttempt.kind },
+    };
   }
 
   if (name === "farmhand_studio_connect") {
@@ -321,7 +324,7 @@ proxy.setRequestHandler(CallToolRequestSchema, async (req) => {
     return {
       isError: !upstream,
       content: [{ type: "text", text }],
-      structuredContent: { up: upstream !== null, url: conn.url },
+      structuredContent: { up: upstream !== null, url: conn.url, reason: lastAttempt.kind },
     };
   }
 
@@ -401,8 +404,11 @@ function dropUpstream(): void {
 
 /**
  * Poll authority for BOTH directions. When down, try to connect. When up,
- * probe liveness (a cheap listTools) — a stateless HTTP studio has no
- * held-open stream to trigger onclose, so the probe is what notices it died.
+ * probe liveness (a cheap ping) — a stateless HTTP studio has no held-open
+ * stream to trigger onclose, so the probe is what notices it died. Tool-list
+ * freshness is handled separately, by the studio's own list_changed
+ * notification (see tryConnectUpstream) — the studio has a single change
+ * pipeline that always fires it, so the probe doesn't need to re-list.
  */
 async function pollUpstream(): Promise<void> {
   if (!upstream) {
@@ -410,7 +416,7 @@ async function pollUpstream(): Promise<void> {
     return;
   }
   try {
-    upstreamTools = (await upstream.listTools()).tools;
+    await upstream.ping();
   } catch (e) {
     log("upstream probe failed — back to down mode:", e instanceof Error ? e.message : e);
     dropUpstream();
