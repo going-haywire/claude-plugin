@@ -1,4 +1,4 @@
-# @going-haywire/farmhand4claude
+# @going-haywire/farmhand-proxy
 
 The **Farmhand** MCP proxy — a stdio↔HTTP bridge that connects Claude Code (or
 any MCP client) to a running [Haywire](https://github.com/going-haywire/haywire)
@@ -6,8 +6,8 @@ studio, so the studio's tools appear mid-session with no reconnect.
 
 > This npm package is just the proxy binary. The full beginner experience —
 > onboarding skills that take you from a bare machine to a running studio — ships
-> as the **`farmhand4claude` Claude Code plugin**, which runs this proxy for you.
-> See the [plugin repo](https://github.com/going-haywire/farmhand4claude).
+> as the **`haywire` Claude Code plugin**, which runs this proxy for you.
+> See the [plugin repo](https://github.com/going-haywire/claude-plugin).
 
 ## What it does
 
@@ -44,8 +44,8 @@ All logs go to stderr; stdout carries only MCP frames.
 You normally don't run this directly — install the plugin and it runs the proxy:
 
 ```text
-/plugin marketplace add going-haywire/farmhand4claude
-/plugin install farmhand4claude@farmhand-marketplace
+/plugin marketplace add going-haywire/claude-plugin
+/plugin install haywire@haywire-marketplace
 ```
 
 ## Configuration (environment variables)

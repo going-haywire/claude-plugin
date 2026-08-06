@@ -1,5 +1,5 @@
 ---
-name: farmhand-getting-started
+name: getting-started
 description: >
   Onboards a beginner from a bare machine to a running Haywire studio. Use this
   skill whenever the user says "help me get started with Haywire", "set up
@@ -106,5 +106,5 @@ many tools are live.
 
 Do NOT explain how Haywire graphs/nodes/framework internals work here. The
 studio serves that as canon resources (`farmhand://docs/canon/*`). Once the
-studio is up, defer to the **farmhand-first-graph** skill and the canon
+studio is up, defer to the **first-graph** skill and the canon
 resources for anything conceptual.

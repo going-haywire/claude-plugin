@@ -1,5 +1,5 @@
 ---
-name: farmhand-first-graph
+name: first-graph
 description: >
   A beginner's first 15 minutes inside a running Haywire studio. Use this skill
   when the user says "my first graph", "how do I add a node", "help me build
@@ -22,7 +22,7 @@ studio's canon resources instead of explaining the framework yourself.
 ## Prerequisite: the studio must be up
 
 If `farmhand_studio_status` reports the studio is down, stop and hand back to
-**farmhand-getting-started** — there are no `farmhand_*` graph tools until the
+**getting-started** — there are no `farmhand_*` graph tools until the
 studio is running.
 
 ## Discover the real tools first

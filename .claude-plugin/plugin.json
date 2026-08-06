@@ -1,18 +1,18 @@
 {
-  "name": "farmhand4claude",
+  "name": "haywire",
   "description": "Your AI guide to Haywire: onboarding from a bare machine to a running studio, plus a bridge that surfaces the studio's tools in Claude Code.",
   "version": "0.1.1",
   "author": {
     "name": "going-haywire"
   },
-  "homepage": "https://github.com/going-haywire/farmhand4claude",
-  "repository": "https://github.com/going-haywire/farmhand4claude",
+  "homepage": "https://github.com/going-haywire/claude-plugin",
+  "repository": "https://github.com/going-haywire/claude-plugin",
   "license": "MIT",
   "keywords": ["mcp", "claude-code", "haywire", "farmhand", "onboarding"],
   "mcpServers": {
     "farmhand": {
       "command": "npx",
-      "args": ["-y", "@going-haywire/farmhand4claude"],
+      "args": ["-y", "@going-haywire/farmhand-proxy"],
       "env": {
         "HAYWIRE_WORKSPACE": "${CLAUDE_PROJECT_DIR}"
       }

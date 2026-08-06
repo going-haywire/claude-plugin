@@ -1,14 +1,14 @@
-# farmhand4claude
+# claude-plugin
 
-[![CI](https://github.com/going-haywire/farmhand4claude/actions/workflows/ci.yml/badge.svg)](https://github.com/going-haywire/farmhand4claude/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@going-haywire/farmhand4claude.svg)](https://www.npmjs.com/package/@going-haywire/farmhand4claude)
+[![CI](https://github.com/going-haywire/claude-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/going-haywire/claude-plugin/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@going-haywire/farmhand-proxy.svg)](https://www.npmjs.com/package/@going-haywire/farmhand-proxy)
 
 **Your AI guide to [Haywire](https://github.com/going-haywire/haywire).** Install this plugin in
 Claude Code and it walks you from a bare machine to a running Haywire studio — checking your setup,
 scaffolding a project, launching the studio — then keeps helping you inside the running app. No
 terminal experience required.
 
-> **Farmhand** is Haywire's name for its AI helper. `farmhand4claude` is the Claude Code plugin half
+> **Farmhand** is Haywire's name for its AI helper. `haywire` is the Claude Code plugin half
 > of it: an onboarding guide plus a bridge that surfaces the studio's tools directly in Claude Code.
 
 ## Who this is for
@@ -31,8 +31,8 @@ manual `uvx … haywire init` path is for you — you don't need this plugin.)*
    Claude Code:
 
    ```text
-   /plugin marketplace add going-haywire/farmhand4claude
-   /plugin install farmhand4claude@farmhand-marketplace
+   /plugin marketplace add going-haywire/claude-plugin
+   /plugin install haywire@haywire-marketplace
    ```
 
 4. Say **"help me get started with Haywire"** — and follow along.
@@ -52,7 +52,7 @@ tools are available to your assistant — all in one session.
 ## Status
 
 The proxy is published on npm as
-[`@going-haywire/farmhand4claude`](https://www.npmjs.com/package/@going-haywire/farmhand4claude);
+[`@going-haywire/farmhand-proxy`](https://www.npmjs.com/package/@going-haywire/farmhand-proxy);
 the plugin (proxy + skills) installs via the marketplace. See
 [`docs/plans/`](docs/plans/) for the build history.
 
@@ -96,10 +96,10 @@ The npm account has 2FA, so the token **must** be allowed to bypass it:
    command prompts you to *paste* the token (keeps it out of shell history):
 
    ```sh
-   gh secret set NPM_TOKEN --repo going-haywire/farmhand4claude
+   gh secret set NPM_TOKEN --repo going-haywire/claude-plugin
    ```
 
-   Verify with `gh secret list --repo going-haywire/farmhand4claude` (shows the
+   Verify with `gh secret list --repo going-haywire/claude-plugin` (shows the
    name + timestamp; the value is write-only and can't be read back).
 
 ### Cutting a release

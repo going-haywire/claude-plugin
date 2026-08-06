@@ -1,19 +1,24 @@
-# farmhand4claude
+# claude-plugin
 
 **Farmhand** is Haywire's umbrella term for the AI harness that helps and supports a user with
-Haywire. This repo is the **Claude-Code-only** slice of it: a plugin that is a beginner's on-ramp
-from a cold machine to a running Haywire studio, plus the always-on MCP proxy that makes studio
-tools appear in Claude Code.
+Haywire. This repo is the **Claude-Code-only** slice of it: the `haywire` plugin, a beginner's
+on-ramp from a cold machine to a running Haywire studio, plus the always-on MCP proxy that makes
+studio tools appear in Claude Code.
 
 ## What this repo is (and is NOT)
 
-- **IS:** the `farmhand4claude` Claude Code plugin — an MCP **proxy** (stdio↔HTTP bridge) + beginner
-  **onboarding skills** + deterministic **scripts** (`doctor`, `bootstrap`, studio launch/lifecycle).
+- **IS:** the `haywire` Claude Code plugin — an MCP **proxy** (stdio↔HTTP bridge, package
+  `@going-haywire/farmhand-proxy`) + beginner **onboarding skills** + deterministic **scripts**
+  (`doctor`, `bootstrap`, studio launch/lifecycle).
 - **IS NOT:** the Haywire framework, the in-studio Farmhand **server**, or the `@farmhand` tools.
   Those live in the `haywire` repo (sibling: `../haywire-repo`). This repo only *talks to* a running
   studio's `/mcp` endpoint.
-- The "4claude" scopes the **plugin**, not the concept "Farmhand." Skills are CC-specific → the plugin
-  is CC-only. The proxy alone is portable to any MCP harness but that is NOT the advertised path.
+- **Naming split:** "Farmhand" is reserved for the mcp-tooling identity — the MCP server name
+  (`farmhand`, so tools appear as `farmhand_*`) and the proxy package (`farmhand-proxy`). Everything
+  that is CC-plugin-shell rather than mcp-tooling (the repo, the installable plugin name, the
+  scripts package) is scoped generically to Claude Code instead: repo `claude-plugin`, plugin name
+  `haywire`, marketplace `haywire-marketplace`. Skills are CC-specific → the plugin is CC-only. The
+  proxy alone is portable to any MCP harness but that is NOT the advertised path.
 
 ## Architecture (two surfaces)
 
@@ -53,11 +58,14 @@ The PRODUCER half already landed in the haywire repo (`farmhand/identity.py`).
 
 ## Layout
 
-- `proxy/` — the TS MCP proxy (npm package `@going-haywire/farmhand4claude`). `src/index.ts` is the
+- `proxy/` — the TS MCP proxy (npm package `@going-haywire/farmhand-proxy`). `src/index.ts` is the
   **proven prototype seed** (tested green vs sdk@1.29.0). Build: `cd proxy && npm install && npm run build`.
-- `scripts/` — deterministic bootstrap/doctor/studio-lifecycle scripts (to build).
-- `skills/` — beginner onboarding skills (to build).
-- `.claude-plugin/` — plugin manifest + marketplace (to build).
+- `scripts/` — deterministic bootstrap/doctor/studio-lifecycle scripts (npm package
+  `@going-haywire/claude-plugin-scripts`, private).
+- `skills/` — beginner onboarding skills: `getting-started` (cold machine → running studio) and
+  `first-graph` (first 15 minutes once the studio is up). Slash commands are namespaced by the
+  plugin name, i.e. `/haywire:getting-started` and `/haywire:first-graph`.
+- `.claude-plugin/` — plugin manifest (`name: haywire`) + marketplace (`name: haywire-marketplace`).
 - `internals/proxy-prototype-harness.ts` — the proven end-to-end test harness from the prototype
   session (down-mode → studio-up → list_changed → forwarded call). Reference for the real test suite.
 - `docs/plans/` — implementation plans.
