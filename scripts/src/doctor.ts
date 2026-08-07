@@ -181,8 +181,32 @@ export function formatReport(r: DoctorReport): string {
   ].join("\n");
 }
 
+const USAGE = `usage: doctor
+
+Probe the toolchain a Haywire studio needs: Python (>=3.12), uv, and git.
+Read-only — never installs or modifies anything. On a miss, prints an
+OS-specific, copy-pasteable install command and lets the caller decide.
+Always exits 0 (the report is data, not a pass/fail gate); a genuine probe
+failure is not expected in normal use.
+
+examples:
+  doctor
+  doctor --help`;
+
 // CLI entrypoint: `node dist/doctor.js` prints the report to stdout, exits 0.
 if (import.meta.url === `file://${process.argv[1]}`) {
+  const argv = process.argv.slice(2);
+
+  if (argv.includes("--help") || argv.includes("-h")) {
+    console.log(USAGE);
+    process.exit(0);
+  }
+  if (argv.length > 0) {
+    console.error(`error: unexpected argument(s): ${argv.join(" ")}`);
+    console.error("help: doctor takes no arguments (--help for details)");
+    process.exit(2);
+  }
+
   doctor().then((r) => {
     console.log(formatReport(r));
     process.exit(0);

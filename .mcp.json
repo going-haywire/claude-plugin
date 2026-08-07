@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "farmhand": {
+      "command": "node",
+      "args": ["./proxy/dist/index.js"]
+    },
+    "argprobe": {
+      "command": "node",
+      "args": ["/private/tmp/claude-253604802/-Volumes-Ddrive-06-open-tracking-tool-haywire-farmhand4claude/4309952b-50c0-4e15-bffc-31d3cef767c8/scratchpad/probe/server.mjs"]
+    }
+  }
+}

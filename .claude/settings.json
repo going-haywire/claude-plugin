@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Volumes/Ddrive/06_open_tracking_tool/haywire/haywire-repo/packages/haywire-studio/src/haywire_studio/farmhand/**)",
+      "Bash(cd /Volumes/Ddrive/06_open_tracking_tool/haywire/haywire-repo && grep -rn \"write_identity\\\\|ensure_token\" --include='*.py' packages/haywire-studio/src/ | grep -v farmhand/identity.py | grep -v farmhand/auth.py)",
+      "Read(//Volumes/Ddrive/06_open_tracking_tool/haywire/haywire-repo/**)",
+      "Bash(cp /private/tmp/claude-253604802/-Volumes-Ddrive-06-open-tracking-tool-haywire-farmhand4claude/46509a33-8da7-47d6-a738-7df7d95e32df/scratchpad/probe.mjs /Volumes/Ddrive/06_open_tracking_tool/haywire/farmhand4claude/proxy/probe.mjs)",
+      "Bash(node probe.mjs)",
+      "mcp__farmhand__studio_list_libraries",
+      "mcp__farmhand__haystack_list_graphs",
+      "mcp__farmhand__haystack_start_graph",
+      "mcp__farmhand__haystack_stop_graph",
+      "mcp__farmhand__graph_editor_query_graph",
+      "mcp__farmhand__graph_editor_inspect_node",
+      "Bash(gh issue *)"
+    ]
+  }
+}

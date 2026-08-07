@@ -324,7 +324,9 @@ proxy.setRequestHandler(CallToolRequestSchema, async (req) => {
     return {
       isError: !upstream,
       content: [{ type: "text", text }],
-      structuredContent: { up: upstream !== null, url: conn.url, reason: lastAttempt.kind },
+      // Same shape as farmhand_studio_status's structuredContent (up/url/source/reason)
+      // so a caller diffing the two doesn't hit a schema that shifts between them.
+      structuredContent: { up: upstream !== null, url: conn.url, source: conn.source, reason: lastAttempt.kind },
     };
   }
 

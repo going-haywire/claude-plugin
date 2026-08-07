@@ -69,13 +69,50 @@ export async function bootstrap(parentDir: string, name: string): Promise<Bootst
   };
 }
 
+const USAGE = `usage: bootstrap <parentDir> <projectName>
+
+Scaffold a new Haywire project: runs \`uvx --from haywire-studio haywire init
+<projectName>\` in <parentDir>, then \`uv sync\` inside the created project.
+Refuses to overwrite an existing path. Installs/modifies nothing else.
+
+arguments:
+  parentDir      Existing, writable directory the project is created under.
+  projectName    Plain slug: letters, digits, '.', '_', '-' only (no spaces
+                 or slashes, and not '.' or '..').
+
+examples:
+  bootstrap . my-project
+  bootstrap /path/to/workspace my-project
+  bootstrap --help`;
+
 // CLI entrypoint: `node dist/bootstrap.js <parentDir> <name>`.
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const [parentDir, name] = process.argv.slice(2);
+  const argv = process.argv.slice(2);
+
+  if (argv.includes("--help") || argv.includes("-h")) {
+    console.log(USAGE);
+    process.exit(0);
+  }
+
+  const [parentDir, name, ...rest] = argv;
   if (!parentDir || !name) {
-    console.error("usage: bootstrap <parentDir> <projectName>");
+    console.error("error: bootstrap requires <parentDir> and <projectName>");
+    console.error(`help: ${USAGE.split("\n")[0]}`);
     process.exit(2);
   }
+  if (rest.length > 0) {
+    console.error(`error: unexpected argument(s): ${rest.join(" ")}`);
+    console.error("help: usage: bootstrap <parentDir> <projectName> (--help for details)");
+    process.exit(2);
+  }
+
+  const nameError = validateName(name);
+  if (nameError) {
+    console.error(`error: ${nameError}`);
+    console.error("help: names may only contain letters, digits, '.', '_' and '-'");
+    process.exit(2);
+  }
+
   bootstrap(parentDir, name)
     .then((r) => {
       console.log(`Created ${r.projectPath}`);

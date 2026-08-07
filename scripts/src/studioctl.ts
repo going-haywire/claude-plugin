@@ -360,9 +360,49 @@ export async function startStudio(
   throw new Error(`Studio ${why}.\n--- studio.log tail ---\n${tail}`);
 }
 
+const USAGE = `usage: studioctl <command> [workspace]
+
+Sidecar-aware Haywire studio lifecycle: resolve the port/sidecar situation for
+a workspace, or launch the studio detached and wait for it to come up.
+
+commands:
+  resolve [workspace]   Classify the studio situation (free/mine/other/unknown/stale).
+                         Prints the ResolveResult as JSON. Never launches anything.
+  start [workspace]     Launch the studio if free/stale, or reuse it if already
+                         mine. Refuses (exit 1) if another/unknown process holds
+                         the port. Prints the StartResult as JSON.
+
+[workspace] defaults to the current directory.
+
+examples:
+  studioctl resolve .
+  studioctl start /path/to/project
+  studioctl --help`;
+
+const KNOWN_COMMANDS = ["resolve", "start"];
+
 // CLI entrypoint: `node dist/studioctl.js [resolve|start] [workspace]`.
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const [cmd, ws] = process.argv.slice(2);
+  const argv = process.argv.slice(2);
+
+  if (argv.includes("--help") || argv.includes("-h") || argv.length === 0) {
+    console.log(USAGE);
+    process.exit(argv.length === 0 ? 2 : 0);
+  }
+
+  const [cmd, ws, ...rest] = argv;
+
+  if (!KNOWN_COMMANDS.includes(cmd!)) {
+    console.error(`error: unknown command '${cmd}'`);
+    console.error(`help: valid commands are: ${KNOWN_COMMANDS.join(", ")} (--help for details)`);
+    process.exit(2);
+  }
+  if (rest.length > 0) {
+    console.error(`error: unexpected argument(s): ${rest.join(" ")}`);
+    console.error(`help: studioctl ${cmd} [workspace] (--help for details)`);
+    process.exit(2);
+  }
+
   const workspace = ws ?? process.cwd();
   (async () => {
     if (cmd === "start") {

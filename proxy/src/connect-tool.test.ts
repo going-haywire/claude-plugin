@@ -168,6 +168,12 @@ async function statusOf(client: Client): Promise<{ text: string; structured: Rec
   })) as { isError?: boolean; content?: Array<{ text?: string }>; structuredContent?: Record<string, unknown> };
   check(res.isError !== true, `connect() with the right port+token succeeds, got "${res.content?.[0]?.text}"`);
   check(res.structuredContent?.up === true, "connect() reports up:true");
+  check(
+    res.structuredContent?.source === "manual",
+    // Same structuredContent shape as farmhand_studio_status (up/url/source/reason) —
+    // a caller diffing the two tools' output must not see a field appear/disappear.
+    `connect() structuredContent carries 'source' like status does, got ${JSON.stringify(res.structuredContent)}`,
+  );
 
   const names = (await client.listTools()).tools.map((t) => t.name);
   check(names.includes("outside_tool"), "the outside studio's tools are now listed");
