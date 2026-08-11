@@ -2,11 +2,11 @@
   "name": "@going-haywire/claude-plugin-scripts",
   "version": "0.1.1",
   "private": true,
-  "description": "Deterministic pre-studio scripts for the haywire Claude Code plugin — doctor (prereq probe), studioctl (sidecar-aware studio lifecycle), bootstrap (haywire init wrapper). No MCP; the onboarding skills orchestrate these.",
+  "description": "Deterministic pre-studio scripts for the haywire Claude Code plugin — doctor (prereq probe), studioctl (sidecar-aware studio lifecycle), bootstrap (haywire init wrapper), permissions (optional farmhand tool-wildcard allow-rule). No MCP; the onboarding skills orchestrate these.",
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node dist/doctor.test.js && node dist/studioctl.test.js && node dist/studioctl.launch.test.js && node dist/bootstrap.test.js"
+    "test": "npm run build && node dist/doctor.test.js && node dist/studioctl.test.js && node dist/studioctl.launch.test.js && node dist/bootstrap.test.js && node dist/permissions.test.js"
   },
   "engines": { "node": ">=20" },
   "license": "MIT",

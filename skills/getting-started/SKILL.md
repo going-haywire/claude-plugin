@@ -102,6 +102,48 @@ many tools are live.
   polled yet; wait a couple seconds and re-check. If it stays down, show the
   `studio.log` tail from `<projectPath>/.haywire/studio.log`.
 
+### Optional: stop the per-tool permission prompts
+
+Once the studio's tools are live, Claude Code prompts for each `farmhand_*`
+tool call individually — 40+ distinct tools, so this gets old fast. **Do not
+bring this up unprompted** — only act if the user asks how to stop the
+repeated prompts (or explicitly asks you to set it up now).
+
+When they do ask, explain the tradeoff first, honestly: a single wildcard
+rule (`mcp__plugin_haywire_farmhand__*`) pre-approves the whole server's tool
+surface, including the studio's *mutating* tools (graph edits, publishing,
+etc.) — the proxy does no filtering of its own, so permission is the only
+gate. Per-tool approval ("Yes, don't ask again" on first use of each tool) is
+the safer default; the wildcard trades that away for convenience.
+
+If they still want it, offer to run it for them rather than making them
+hand-edit JSON:
+
+```
+node <plugin>/scripts/dist/permissions.js allow [projectDir]
+```
+
+This adds the one rule to `<projectDir>/.claude/settings.json` (defaults to
+the current directory; this project only). It's idempotent — safe to run
+more than once — and additive: every other key and rule already in the file
+is preserved untouched. **Confirm scope with the user before running**: pass
+`--global` instead only if they specifically want it applied to every
+project, not just this one (writes to `~/.claude/settings.json`). Never run
+this without the user having asked for the outcome first — it is an opt-in
+convenience, not a default onboarding step.
+
+If they'd rather edit it themselves, the snippet the script produces is:
+
+```json
+{
+  "permissions": {
+    "allow": ["mcp__plugin_haywire_farmhand__*"]
+  }
+}
+```
+
+(or point them at the `/permissions` UI instead.)
+
 ## Teaching depth is not your job
 
 Do NOT explain how Haywire graphs/nodes/framework internals work here. The
