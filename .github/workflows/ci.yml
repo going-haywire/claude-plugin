@@ -56,3 +56,13 @@ jobs:
       - name: scripts — test (doctor / studioctl / bootstrap)
         working-directory: scripts
         run: npm test
+
+      # The plugin ships scripts/dist as committed files (installs run no build),
+      # so the build `npm test` just ran must match what's in git.
+      - name: scripts — committed dist is up to date
+        run: |
+          if [ -n "$(git status --porcelain -- scripts/dist)" ]; then
+            git status --short -- scripts/dist
+            echo "::error::scripts/dist is stale. Run 'cd scripts && npm run build' and commit the result."
+            exit 1
+          fi

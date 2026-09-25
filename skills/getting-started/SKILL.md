@@ -19,8 +19,13 @@ studio whose tools are live in this Claude Code session. You orchestrate three
 deterministic scripts. **You never install or overwrite anything** — on a
 prerequisite miss you show the copy-pasteable hint and wait.
 
-The scripts live in the plugin's `scripts/` package (built to `scripts/dist/`).
-Run them with `node`. All three print structured/JSON output to stdout.
+The scripts ship prebuilt in the plugin at `${CLAUDE_PLUGIN_ROOT}/scripts/dist/`.
+Run them with `node`, quoting the path (it can contain spaces, e.g. under
+`Application Support`). All three print structured/JSON output to stdout.
+
+If a command below still shows the literal text `${CLAUDE_PLUGIN_ROOT}`, the
+plugin root is two levels above this skill's base directory
+(`<skill base dir>/../..`); use that path instead.
 
 ## The path (do these in order)
 
@@ -29,7 +34,7 @@ Run them with `node`. All three print structured/JSON output to stdout.
 Run:
 
 ```
-node <plugin>/scripts/dist/doctor.js
+node "${CLAUDE_PLUGIN_ROOT}/scripts/dist/doctor.js"
 ```
 
 This probes Python (≥3.12), `uv`, and git. It reports; it does not fix.
@@ -56,7 +61,7 @@ sanitized version and confirm.
 Then run:
 
 ```
-node <plugin>/scripts/dist/bootstrap.js <parentDir> <projectName>
+node "${CLAUDE_PLUGIN_ROOT}/scripts/dist/bootstrap.js" <parentDir> <projectName>
 ```
 
 This runs `uvx --from haywire-studio haywire init <name>` then `uv sync`. It
@@ -68,13 +73,13 @@ exists, offer a different name — never delete their folder.
 First resolve the port situation:
 
 ```
-node <plugin>/scripts/dist/studioctl.js resolve <projectPath>
+node "${CLAUDE_PLUGIN_ROOT}/scripts/dist/studioctl.js" resolve <projectPath>
 ```
 
 Read the `state`:
 
 - **`free`** or **`stale`** → safe to start. Run
-  `node <plugin>/scripts/dist/studioctl.js start <projectPath>`. This launches
+  `node "${CLAUDE_PLUGIN_ROOT}/scripts/dist/studioctl.js" start <projectPath>`. This launches
   `uv run haywire` **detached** (it keeps running after this session) and polls
   until the studio answers, returning the URL.
 - **`mine`** → a studio for THIS project is already up. Reuse it — do not start
@@ -120,7 +125,7 @@ If they still want it, offer to run it for them rather than making them
 hand-edit JSON:
 
 ```
-node <plugin>/scripts/dist/permissions.js allow [projectDir]
+node "${CLAUDE_PLUGIN_ROOT}/scripts/dist/permissions.js" allow [projectDir]
 ```
 
 This adds the one rule to `<projectDir>/.claude/settings.json` (defaults to

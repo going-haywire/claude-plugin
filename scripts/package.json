@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node dist/doctor.test.js && node dist/studioctl.test.js && node dist/studioctl.launch.test.js && node dist/bootstrap.test.js && node dist/permissions.test.js"
+    "build:test": "tsc -p tsconfig.test.json",
+    "test": "npm run build && npm run build:test && node dist-test/doctor.test.js && node dist-test/studioctl.test.js && node dist-test/studioctl.launch.test.js && node dist-test/bootstrap.test.js && node dist-test/permissions.test.js"
   },
   "engines": { "node": ">=20" },
   "license": "MIT",

@@ -1,6 +1,12 @@
 node_modules/
 dist/
+# The getting-started skill runs these with plain `node`; plugin installs run no
+# build step, so the compiled scripts must be committed. CI checks they're fresh.
+!scripts/dist/
 dist-test/
+# Local dev MCP config. At the repo root it doubles as the plugin root, so a
+# committed .mcp.json would ship its servers to every user.
+.mcp.json
 *.log
 .DS_Store
 .superpowers/
