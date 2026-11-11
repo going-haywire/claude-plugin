@@ -5,7 +5,7 @@ description: >
   skill whenever the user says "help me get started with Haywire", "set up
   haywire", "install haywire", "I want to try haywire", or otherwise asks to go
   from nothing to a working Haywire studio. It runs the prerequisite check
-  (Python 3.12+/uv/git), scaffolds a project, launches the studio detached, and
+  (uv and git; Python is optional because uv fetches it), scaffolds a project, launches the studio detached, and
   confirms the studio's tools appeared in this session. It NEVER installs or
   overwrites a toolchain — on a missing prerequisite it shows the exact install
   command and waits for the user. Defers all framework teaching to the studio's
@@ -37,17 +37,22 @@ Run:
 node "${CLAUDE_PLUGIN_ROOT}/scripts/dist/doctor.js"
 ```
 
-This probes Python (≥3.12), `uv`, and git. It reports; it does not fix.
+This probes `uv` and git (the real prerequisites) and reports whether a
+Python ≥3.12 is already installed. It reports; it does not fix. The report ends
+with `Ready.` or `Not ready: …`.
 
-- **All three OK** → continue to step 2.
-- **Any miss** → show the user the exact `install:` hint the report gives for
-  that tool (it is OS-specific and copy-pasteable). Explain what the tool is in
-  one line. **Do NOT run the install command yourself and do NOT try to "fix"
-  their toolchain** — the user runs it, then you re-run `doctor` to confirm.
-  Only proceed once all three are OK.
+- **`Ready.`** → continue to step 2. A line like `· Python 3.12+ — not
+  installed; not needed, uv downloads one automatically` is **not a problem**:
+  `uvx --python 3.12` fetches a managed Python on demand. Do not ask the
+  user to install or upgrade Python, and do not treat an old Python (e.g. 3.11)
+  as a failure.
+- **`Not ready`** (a `✗` on `uv` or `git`) → show the user the exact `install:`
+  hint the report gives for that tool (it is OS-specific and copy-pasteable).
+  Explain what the tool is in one line. **Do NOT run the install command
+  yourself and do NOT try to "fix" their toolchain** — the user runs it, then
+  you re-run `doctor` to confirm. Only proceed once the report says `Ready.`
 
-Never clobber: if a tool is present but old (e.g. Python 3.11), still just show
-the hint — do not attempt to upgrade or replace what's there.
+Never clobber: do not attempt to upgrade or replace anything already present.
 
 ### 2. Choose a project name + scaffold — `bootstrap`
 
@@ -64,9 +69,14 @@ Then run:
 node "${CLAUDE_PLUGIN_ROOT}/scripts/dist/bootstrap.js" <parentDir> <projectName>
 ```
 
-This runs `uvx --from haywire-studio haywire init <name>` then `uv sync`. It
-refuses to overwrite an existing `<projectName>/`. If it errors that the path
-exists, offer a different name — never delete their folder.
+This runs `uvx --python 3.12 --from haywire-studio haywire init <name>`
+then `uv sync`. It refuses to overwrite an existing `<projectName>/`. If it
+errors that the path exists, offer a different name — never delete their folder.
+
+`--python 3.12` lets uv use an installed 3.12 or download one, so a machine whose
+default Python is older still works. The scaffolded project also pins 3.12 in
+`.python-version`, so a newer machine default doesn't change which Python it runs
+on (not every library supports 3.13+ yet).
 
 ### 3. Launch the studio — `studioctl`
 

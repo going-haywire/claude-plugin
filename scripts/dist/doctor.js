@@ -1,9 +1,12 @@
 /**
  * doctor — prerequisite probe for a Haywire studio.
  *
- * Reports whether Python (>=3.12), uv, and git are present. It NEVER installs
- * or modifies anything: on a miss it returns an OS-specific, copy-pasteable
- * install hint and lets the caller (the onboarding skill) decide what to do.
+ * Reports whether uv and git are present (the real prerequisites) and whether
+ * a Python >=3.12 is already installed (informational only: uv downloads a
+ * managed Python on demand, so a missing or old Python never blocks). It NEVER
+ * installs or modifies anything: on a miss it returns an OS-specific,
+ * copy-pasteable install hint and lets the caller (the onboarding skill) decide
+ * what to do. `ready` is the single go/no-go flag: uv and git present.
  *
  * The report is data, not a pass/fail gate — the process exits 0 either way.
  */
@@ -28,18 +31,9 @@ async function tryRun(cmd, args) {
         return null;
     }
 }
-function pythonHint(p) {
-    switch (p) {
-        case "darwin":
-            return "brew install python@3.12";
-        case "linux":
-            return "sudo apt install python3.12   # or your distro's equivalent";
-        case "win32":
-            return "winget install Python.Python.3.12   # or download from https://www.python.org/downloads/";
-        default:
-            // uv can manage a Python for you on any platform.
-            return "uv python install 3.12   # or install Python 3.12+ from https://www.python.org/downloads/";
-    }
+/** Optional: uvx downloads a Python by itself, so this is never required. */
+function pythonHint() {
+    return "uv python install 3.12   # optional — uvx downloads a Python automatically when needed";
 }
 function uvHint(p) {
     if (p === "win32") {
@@ -88,7 +82,7 @@ function pythonCandidates() {
         suffixed.push(`python${PY_MIN.major}.${minor}`);
     return [...suffixed, "python3", "python"];
 }
-async function checkPython(p) {
+async function checkPython() {
     // Track the newest interpreter we saw, so a miss can report what IS there.
     let best = null;
     for (const cmd of pythonCandidates()) {
@@ -105,8 +99,8 @@ async function checkPython(p) {
         if (!best)
             best = { version: parsed.version, interpreter: cmd };
     }
-    // Nothing installed meets the floor — this is a real, user-actionable miss.
-    return { ok: false, version: best?.version, hint: pythonHint(p) };
+    // Nothing installed meets the floor. Not a blocker: uv provides a managed Python.
+    return { ok: false, version: best?.version, hint: pythonHint() };
 }
 async function checkVersioned(cmd, hint) {
     const out = await tryRun(cmd, ["--version"]);
@@ -119,11 +113,11 @@ async function checkVersioned(cmd, hint) {
 export async function doctor() {
     const p = platform();
     const [python, uv, git] = await Promise.all([
-        checkPython(p),
+        checkPython(),
         checkVersioned("uv", uvHint(p)),
         checkVersioned("git", gitHint(p)),
     ]);
-    return { python, uv, git };
+    return { python, uv, git, ready: uv.ok && git.ok };
 }
 /** Render the report as human-readable text for the skill/CLI to show. */
 export function formatReport(r) {
@@ -137,16 +131,22 @@ export function formatReport(r) {
         const found = c.version ? ` (found ${c.version})` : "";
         return `  ✗ ${label} — not found${found}\n      install: ${c.hint}`;
     };
+    // Python never blocks: uv downloads a managed 3.12+ on demand.
+    const pythonLine = r.python.ok
+        ? line("Python 3.12+", r.python)
+        : `  · Python 3.12+ — not installed${r.python.version ? ` (found ${r.python.version})` : ""}; not needed, uv downloads one automatically`;
     return [
         "Haywire prerequisite check:",
-        line("Python 3.12+", r.python),
+        pythonLine,
         line("uv", r.uv),
         line("git", r.git),
+        r.ready ? "Ready." : "Not ready: install the missing item(s) marked ✗ above.",
     ].join("\n");
 }
 const USAGE = `usage: doctor
 
-Probe the toolchain a Haywire studio needs: Python (>=3.12), uv, and git.
+Probe the toolchain a Haywire studio needs: uv and git are required; a
+Python >=3.12 is reported but optional (uv downloads one when needed).
 Read-only — never installs or modifies anything. On a miss, prints an
 OS-specific, copy-pasteable install command and lets the caller decide.
 Always exits 0 (the report is data, not a pass/fail gate); a genuine probe

@@ -23,8 +23,10 @@ studio tools appear in Claude Code.
 ## Architecture (two surfaces)
 
 1. **Pre-studio** (no MCP yet): beginner **skills** orchestrate deterministic **scripts** —
-   `doctor` (probe Python≥3.12 / uv / git, never clobber), `bootstrap` (glorified
-   `uvx --from haywire-studio haywire init <name>`), studio launch (detached, poll the studio port).
+   `doctor` (probe uv / git as the real prerequisites, Python≥3.12 informational only since uv
+   fetches it; never clobber), `bootstrap` (glorified
+   `uvx --python 3.12 --from haywire-studio haywire init <name>`; the pin lets uv fetch a Python on
+   machines whose default is older, and keeps newer defaults out, since not every library supports 3.13+), studio launch (detached, poll the studio port).
 2. **Post-studio:** the **`farmhand` MCP proxy** (`proxy/src/index.ts`) — a stdio MCP server Claude
    Code spawns at session start, forwarding to the studio's HTTP `/mcp` and re-emitting
    `list_changed` so tools appear mid-session with no reconnect.
