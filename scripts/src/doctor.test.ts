@@ -1,5 +1,5 @@
 // doctor.test.ts — probe returns structured facts; never mutates the system.
-import { doctor } from "./doctor.js";
+import { doctor, formatReport } from "./doctor.js";
 import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, delimiter } from "node:path";
@@ -20,6 +20,8 @@ assert(typeof report.python.ok === "boolean", "python.ok is boolean");
 assert("hint" in report.python, "python carries a hint field");
 assert(typeof report.uv.ok === "boolean", "uv.ok is boolean");
 assert(typeof report.git.ok === "boolean", "git.ok is boolean");
+
+assert(report.ready === (report.uv.ok && report.git.ok), "ready = uv && git (python never gates)");
 
 // On a system missing a tool, the hint must be a non-empty string.
 for (const key of ["python", "uv", "git"] as const) {
@@ -51,20 +53,30 @@ if (process.platform !== "win32") {
     process.env.PATH = prevPath;
   }
 
-  // And the true-miss case: only an old python3 -> flag it, with a hint.
+  // Old python only, but uv + git present -> still ready (uv downloads a Python).
+  // Also: a missing uv must flip ready to false.
   const bin2 = mkdtempSync(join(tmpdir(), "fc-pybin2-"));
   const shim2 = (name: string, ver: string) => {
     const p = join(bin2, name);
-    writeFileSync(p, `#!/bin/sh\necho "Python ${ver}"\n`);
+    writeFileSync(p, `#!/bin/sh\necho "${name.startsWith("python") ? "Python " : ""}${ver}"\n`);
     chmodSync(p, 0o755);
   };
   shim2("python3", "3.10.11");
+  shim2("uv", "uv 0.13.5");
+  shim2("git", "git version 2.45.0");
   process.env.PATH = bin2;
   try {
     const r = await doctor();
-    assert(r.python.ok === false, "only an old python -> not flight-ready");
+    assert(r.python.ok === false, "only an old python -> python check reports a miss");
     assert(r.python.version === "3.10.11", `miss still reports what was found, got ${r.python.version}`);
-    assert(r.python.hint.length > 0, "true miss carries an install hint");
+    assert(r.ready === true, "old python + uv + git is READY: uv provides Python");
+    const text = formatReport(r);
+    assert(text.includes("uv downloads one automatically"), "report says uv supplies Python");
+    assert(!text.includes("✗"), "an old python is not flagged as a failure");
+    process.env.PATH = mkdtempSync(join(tmpdir(), "fc-empty-"));
+    assert((await doctor()).ready === false, "no uv/git -> not ready");
+    process.env.PATH = bin2;
+    assert(text.includes("Ready."), "report ends with Ready.");
   } finally {
     process.env.PATH = prevPath;
   }

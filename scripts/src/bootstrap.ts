@@ -1,10 +1,14 @@
 /**
  * bootstrap — thin wrapper around Haywire's own project scaffolder.
  *
- * Project creation is `uvx --from haywire-studio haywire init <name>` — we do
- * NOT reimplement scaffolding. bootstrap only validates inputs, runs that
- * command in the parent dir, then `uv sync` in the created project, and hands
- * the result back to the caller (the onboarding skill).
+ * Project creation is `uvx --python 3.12 --from haywire-studio haywire
+ * init <name>` — we do NOT reimplement scaffolding. bootstrap only validates
+ * inputs, runs that command in the parent dir, then `uv sync` in the created
+ * project, and hands the result back to the caller (the onboarding skill).
+ *
+ * `--python 3.12` lets uv use an installed 3.12 or download one, instead of
+ * failing on an older default Python or running on a newer one that not every
+ * library (haybale-visiongraph) supports yet.
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -15,7 +19,7 @@ const run = promisify(execFile);
 
 /** The argv for creating a project. Kept separate so it's trivially testable. */
 export function buildInitCommand(name: string): string[] {
-  return ["uvx", "--from", "haywire-studio", "haywire", "init", name];
+  return ["uvx", "--python", "3.12", "--from", "haywire-studio", "haywire", "init", name];
 }
 
 /**
@@ -71,8 +75,9 @@ export async function bootstrap(parentDir: string, name: string): Promise<Bootst
 
 const USAGE = `usage: bootstrap <parentDir> <projectName>
 
-Scaffold a new Haywire project: runs \`uvx --from haywire-studio haywire init
-<projectName>\` in <parentDir>, then \`uv sync\` inside the created project.
+Scaffold a new Haywire project: runs \`uvx --python 3.12 --from
+haywire-studio haywire init <projectName>\` in <parentDir>, then \`uv sync\`
+inside the created project.
 Refuses to overwrite an existing path. Installs/modifies nothing else.
 
 arguments:

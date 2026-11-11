@@ -12,7 +12,7 @@ function assert(cond: boolean, msg: string) {
 
 const cmd = buildInitCommand("my-project");
 assert(
-  cmd.join(" ") === "uvx --from haywire-studio haywire init my-project",
+  cmd.join(" ") === 'uvx --python 3.12 --from haywire-studio haywire init my-project',
   `init command shape, got: ${cmd.join(" ")}`,
 );
 

@@ -21,8 +21,9 @@ manual `uvx … haywire init` path is for you. You don't need this plugin.)*
 
 ## Before you start
 
-The plugin checks for Python 3.12+, `uv` and git. If one is missing it shows you the install
-command for your system and waits. It never installs them itself.
+The plugin checks for `uv` and git. If one is missing it shows you the install command for your
+system and waits. It never installs them itself. You don't need to install Python: `uv` downloads
+Python 3.12+ for Haywire automatically if your machine doesn't have it.
 
 It also needs **Node.js 20 or newer**, which it can't check for you yet. If you don't have Node,
 install the LTS version from [nodejs.org](https://nodejs.org) first.
